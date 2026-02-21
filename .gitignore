@@ -1,0 +1,26 @@
+# Dependencias de Composer
+/vendor/
+
+# Archivos de configuración local (¡NUNCA subas tu .env!)
+.env
+.env.local
+.env.*.local
+
+# Archivos generados por el sistema
+/storage/logs/*.log
+/storage/backups/*.sql
+
+# Archivos del sistema operativo
+Thumbs.db
+.DS_Store
+
+# Archivos de IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Archivos de prueba temporales (opcional)
+test_*.php
+prueba*.php
+manual*.php
+diagnostico_*.php
