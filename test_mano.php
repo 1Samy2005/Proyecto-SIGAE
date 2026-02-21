@@ -1,0 +1,3 @@
+<?php
+echo "LA CREACIÓN MANUAL FUNCIONA.";
+?>
