@@ -1,0 +1,111 @@
+@startuml
+' Configuración básica
+skinparam classAttributeIconSize 0
+skinparam classBackgroundColor #E6F2FF
+skinparam classBorderColor #2C3E50
+skinparam classBorderThickness 2
+
+' ==============================================
+' CLASES PRINCIPALES - VERSIÓN SIMPLIFICADA
+' ==============================================
+
+class Usuario {
+    + id_usuario : int
+    + nombre_usuario : string
+    + email : string
+    + tfa_activo : boolean
+    + autenticar()
+    + tienePermiso()
+}
+
+class Estudiante {
+    + id_estudiante : int
+    + cedula : string
+    + nombres : string
+    + apellidos : string
+    + fecha_nacimiento : date
+    + getNombreCompleto()
+}
+
+class Docente {
+    + id_docente : int
+    + cedula : string
+    + nombres : string
+    + apellidos : string
+    + especialidad : string
+    + registrarCalificaciones()
+}
+
+class Materia {
+    + id_materia : int
+    + codigo_materia : string
+    + nombre_materia : string
+    + area_conocimiento : string
+}
+
+class Seccion {
+    + id_seccion : int
+    + nombre_seccion : string
+    + anio_escolar : string
+    + nivel_academico : string
+}
+
+class Inscripcion {
+    + id_inscripcion : int
+    + anio_escolar : string
+    + estatus_inscripcion : string
+    + fecha_inscripcion : date
+    + calcularPromedio()
+}
+
+class Calificacion {
+    + id_calificacion : int
+    + valor_calificacion : float
+    + tipo_evaluacion : string
+    + observaciones : string
+    + fecha_registro : datetime
+    + esAprobatoria()
+}
+
+class PeriodoAcademico {
+    + id_periodo : int
+    + nombre_periodo : string
+    + ponderacion : float
+    + fecha_inicio : date
+    + fecha_fin : date
+}
+
+class Rol {
+    + id_rol : int
+    + nombre_rol : string
+    + permisos : json
+}
+
+' ==============================================
+' RELACIONES DE HERENCIA
+' ==============================================
+Usuario <|-- Docente
+Usuario <|-- Administrador : hereda
+Usuario <|-- PersonalControl : hereda
+
+' ==============================================
+' RELACIONES DE ASOCIACIÓN
+' ==============================================
+Estudiante "1" -- "many" Inscripcion : se inscribe en
+Seccion "1" -- "many" Inscripcion : contiene
+
+Inscripcion "1" -- "many" Calificacion : genera
+
+Materia "1" -- "many" Calificacion : es evaluada en
+Docente "1" -- "many" Calificacion : registra
+PeriodoAcademico "1" -- "many" Calificacion : corresponde a
+
+Usuario "1" -- "many" Rol : tiene asociado
+
+' ==============================================
+' NOTAS
+' ==============================================
+note top of Inscripcion : Tabla pivote para\nhistorial académico
+note bottom of Calificacion : Valor entre 0-20
+note right of PeriodoAcademico : Ej: "Lapso 1", "Lapso 2"
+@enduml

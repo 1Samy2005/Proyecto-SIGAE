@@ -1,79 +1,105 @@
 <?php
 session_start();
+
+// Incluir archivos necesarios (rutas absolutas, ajusta si es necesario)
 require_once 'C:/xampp/htdocs/SIGAE/app/core/Database.php';
+require_once 'C:/xampp/htdocs/SIGAE/app/helpers/AuditLogger.php';
 
 use App\Core\Database;
 
 $error = '';
+$audit = new AuditLogger();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
     
+    // Obtener IP y User Agent para auditoría
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    
     try {
         $db = Database::getInstance();
         
-        // Buscar usuario (incluyendo campos de 2FA)
-        $stmt = $db->query(
+        // =============================================
+        // BUSCAR USUARIO ACTIVO (CONSULTA PREPARADA)
+        // =============================================
+        $stmt = $db->prepare(
             "SELECT id_usuario, nombre_usuario, email, password_hash, tfa_activo 
              FROM usuarios 
-             WHERE nombre_usuario = :username AND estatus = 'activo'",
-            ['username' => $username]
+             WHERE nombre_usuario = :username AND estatus = 'activo'"
         );
+        $stmt->execute(['username' => $username]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        // =============================================
-        // VERIFICACIÓN DE CONTRASEÑA
-        // =============================================
         if ($user && password_verify($password, $user['password_hash'])) {
             
-            // =============================================
-            // VERIFICACIÓN DE 2FA - CORREGIDO
-            // =============================================
-            
-            // Verificar si el usuario tiene 2FA activado
+            // Verificar 2FA
             if (isset($user['tfa_activo']) && $user['tfa_activo'] == true) {
-                // Usuario con 2FA - guardar ID temporalmente
+                // Registrar pendiente de 2FA
+                $audit->logLoginPendiente2FA($user['id_usuario'], $user['nombre_usuario'], $ip, $userAgent);
+                
                 $_SESSION['2fa_user_id'] = $user['id_usuario'];
                 $_SESSION['2fa_username'] = $user['nombre_usuario'];
-                
-                // REDIRECCIÓN CORREGIDA - RUTA ABSOLUTA
                 header('Location: /SIGAE/twofactor/verificar.php');
                 exit;
-                
             } else {
-                // Usuario sin 2FA - inicio de sesión normal
-                
-                // Obtener rol del usuario
-                $stmt_rol = $db->query(
+                // =============================================
+                // OBTENER ROLES DEL USUARIO (CONSULTA PREPARADA)
+                // =============================================
+                $stmt_roles = $db->prepare(
                     "SELECT r.nombre_rol 
                      FROM usuario_roles ur
                      JOIN roles r ON ur.id_rol = r.id_rol
-                     WHERE ur.id_usuario = :id",
-                    ['id' => $user['id_usuario']]
+                     WHERE ur.id_usuario = :id"
                 );
-                $rol = $stmt_rol->fetch();
+                $stmt_roles->execute(['id' => $user['id_usuario']]);
+                $roles = $stmt_roles->fetchAll(PDO::FETCH_COLUMN);
+                
+                // =============================================
+                // OBTENER PERMISOS ÚNICOS DE TODOS LOS ROLES
+                // =============================================
+                $permisos = [];
+                if (!empty($roles)) {
+                    // Crear placeholders dinámicos para la cláusula IN
+                    $placeholders = implode(',', array_fill(0, count($roles), '?'));
+                    $stmt_permisos = $db->prepare(
+                        "SELECT permisos FROM roles WHERE nombre_rol IN ($placeholders)"
+                    );
+                    $stmt_permisos->execute($roles);
+                    $rows = $stmt_permisos->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($rows as $row) {
+                        $perms = json_decode($row['permisos'], true);
+                        if (is_array($perms)) {
+                            $permisos = array_merge($permisos, $perms);
+                        }
+                    }
+                    $permisos = array_unique($permisos);
+                }
                 
                 // Guardar datos en sesión
                 $_SESSION['user_id'] = $user['id_usuario'];
                 $_SESSION['username'] = $user['nombre_usuario'];
-                $_SESSION['rol'] = $rol['nombre_rol'] ?? 'sin_rol';
+                $_SESSION['roles'] = $roles;
+                $_SESSION['permisos'] = $permisos;
+                $_SESSION['rol'] = $roles[0] ?? 'sin_rol'; // Compatibilidad
                 
-                // Redirigir al dashboard
+                // Registrar login exitoso en auditoría
+                $audit->logLoginExitoso($user['id_usuario'], $user['nombre_usuario'], $ip, $userAgent);
+                
                 header('Location: /SIGAE/dashboard.php');
                 exit;
             }
-            
         } else {
+            // Login fallido
+            $audit->logLoginFallido($username, $ip, $userAgent);
             $error = 'Usuario o contraseña incorrectos';
         }
-        
     } catch (Exception $e) {
         $error = 'Error de conexión: ' . $e->getMessage();
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -200,7 +226,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         <div class="info">
             <p>SIGAE v2.0 - U.E.N. José Agustín Marquiegüi</p>
-            <p style="margin-top: 10px; color: #999;">Usuario: admin | Contraseña: Admin2026!</p>
+            <p style="margin-top: 10px; color: #999;">BIENVENIDO AL SISTEMA SIGAE</p>
         </div>
     </div>
 </body>

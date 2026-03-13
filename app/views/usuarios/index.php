@@ -17,11 +17,11 @@ use App\Core\Database;
 $db = Database::getInstance();
 
 // =============================================
-// AGREGAR USUARIO
+// AGREGAR USUARIO (CORREGIDO)
 // =============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['agregar'])) {
-    $nombre_usuario = $_POST['nombre_usuario'];
-    $email = $_POST['email'];
+    $nombre_usuario = trim($_POST['nombre_usuario']);
+    $email = trim($_POST['email']);
     $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
     $rol = $_POST['rol'];
     $salt = bin2hex(random_bytes(16));
@@ -29,36 +29,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['agregar'])) {
     try {
         $db->beginTransaction();
         
-        // Insertar usuario
-        $stmt = $db->query(
+        // Insertar usuario (CONSULTA PREPARADA)
+        $stmt = $db->prepare(
             "INSERT INTO usuarios (nombre_usuario, email, password_hash, password_salt, estatus) 
-             VALUES (:usuario, :email, :password, :salt, 'activo') RETURNING id_usuario",
-            ['usuario' => $nombre_usuario, 'email' => $email, 'password' => $password, 'salt' => $salt]
+             VALUES (:usuario, :email, :password, :salt, 'activo') RETURNING id_usuario"
         );
-        $id_usuario = $stmt->fetch()['id_usuario'];
+        $stmt->execute([
+            'usuario' => $nombre_usuario,
+            'email' => $email,
+            'password' => $password,
+            'salt' => $salt
+        ]);
+        $id_usuario = $stmt->fetchColumn(); // Obtener el ID retornado
         
-        // Asignar rol
-        $db->query(
+        // Asignar rol (CONSULTA PREPARADA)
+        $stmt_rol = $db->prepare(
             "INSERT INTO usuario_roles (id_usuario, id_rol, asignado_por) 
-             VALUES (:usuario, :rol, :admin)",
-            ['usuario' => $id_usuario, 'rol' => $rol, 'admin' => $_SESSION['user_id']]
+             VALUES (:usuario, :rol, :admin)"
         );
+        $stmt_rol->execute([
+            'usuario' => $id_usuario,
+            'rol' => $rol,
+            'admin' => $_SESSION['user_id']
+        ]);
         
         $db->commit();
         $success = "✅ Usuario creado exitosamente";
+    } catch (PDOException $e) {
+        $db->rollBack();
+        // Verificar si es error de email duplicado
+        if ($e->errorInfo[1] == 23505) { // Código de violación de unicidad en PostgreSQL
+            $error = "❌ El email '$email' ya está registrado. Por favor, use otro email.";
+        } else {
+            $error = "❌ Error al crear usuario: " . $e->getMessage();
+        }
     } catch (Exception $e) {
         $db->rollBack();
-        $error = "❌ Error al crear usuario: " . $e->getMessage();
+        $error = "❌ Error general: " . $e->getMessage();
     }
 }
 
 // =============================================
-// EDITAR USUARIO
+// EDITAR USUARIO (CORREGIDO)
 // =============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar'])) {
     $id = $_POST['id'];
-    $nombre_usuario = $_POST['nombre_usuario'];
-    $email = $_POST['email'];
+    $nombre_usuario = trim($_POST['nombre_usuario']);
+    $email = trim($_POST['email']);
     $rol = $_POST['rol'];
     $estatus = $_POST['estatus'];
     
@@ -66,47 +83,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar'])) {
         $db->beginTransaction();
         
         // Actualizar usuario
-        $db->query(
-            "UPDATE usuarios SET nombre_usuario = :usuario, email = :email, estatus = :estatus WHERE id_usuario = :id",
-            ['usuario' => $nombre_usuario, 'email' => $email, 'estatus' => $estatus, 'id' => $id]
+        $stmt_upd = $db->prepare(
+            "UPDATE usuarios SET nombre_usuario = :usuario, email = :email, estatus = :estatus 
+             WHERE id_usuario = :id"
         );
+        $stmt_upd->execute([
+            'usuario' => $nombre_usuario,
+            'email' => $email,
+            'estatus' => $estatus,
+            'id' => $id
+        ]);
         
         // Actualizar rol
-        $db->query(
-            "UPDATE usuario_roles SET id_rol = :rol WHERE id_usuario = :id",
-            ['rol' => $rol, 'id' => $id]
+        $stmt_rol = $db->prepare(
+            "UPDATE usuario_roles SET id_rol = :rol WHERE id_usuario = :id"
         );
+        $stmt_rol->execute([
+            'rol' => $rol,
+            'id' => $id
+        ]);
         
         $db->commit();
         $success = "✅ Usuario actualizado correctamente";
+    } catch (PDOException $e) {
+        $db->rollBack();
+        if ($e->errorInfo[1] == 23505) {
+            $error = "❌ El email '$email' ya está registrado por otro usuario.";
+        } else {
+            $error = "❌ Error al actualizar: " . $e->getMessage();
+        }
     } catch (Exception $e) {
         $db->rollBack();
-        $error = "❌ Error al actualizar: " . $e->getMessage();
+        $error = "❌ Error general: " . $e->getMessage();
     }
 }
 
 // =============================================
-// CAMBIAR CONTRASEÑA
+// CAMBIAR CONTRASEÑA (CORREGIDO)
 // =============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cambiar_password'])) {
     $id = $_POST['id'];
     $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
     
-    $db->query(
-        "UPDATE usuarios SET password_hash = :password WHERE id_usuario = :id",
-        ['password' => $password, 'id' => $id]
-    );
-    $success = "✅ Contraseña actualizada";
+    try {
+        $stmt_pass = $db->prepare("UPDATE usuarios SET password_hash = :password WHERE id_usuario = :id");
+        $stmt_pass->execute(['password' => $password, 'id' => $id]);
+        $success = "✅ Contraseña actualizada";
+    } catch (Exception $e) {
+        $error = "❌ Error al cambiar contraseña: " . $e->getMessage();
+    }
 }
 
 // =============================================
-// ELIMINAR USUARIO
+// ELIMINAR USUARIO (CORREGIDO)
 // =============================================
 if (isset($_GET['eliminar'])) {
     $id = $_GET['eliminar'];
     if ($id != 1) { // No permitir eliminar al admin principal
-        $db->query("DELETE FROM usuarios WHERE id_usuario = :id", ['id' => $id]);
-        $success = "✅ Usuario eliminado";
+        try {
+            $stmt_del = $db->prepare("DELETE FROM usuarios WHERE id_usuario = :id");
+            $stmt_del->execute(['id' => $id]);
+            $success = "✅ Usuario eliminado";
+        } catch (Exception $e) {
+            $error = "❌ Error al eliminar: " . $e->getMessage();
+        }
     } else {
         $error = "❌ No se puede eliminar al administrador principal";
     }
@@ -115,7 +155,7 @@ if (isset($_GET['eliminar'])) {
 }
 
 // =============================================
-// OBTENER DATOS
+// OBTENER DATOS (CORREGIDO)
 // =============================================
 $usuarios = $db->query(
     "SELECT u.*, r.nombre_rol 
@@ -130,20 +170,21 @@ $roles = $db->query("SELECT * FROM roles ORDER BY id_rol")->fetchAll();
 // Obtener usuario para editar
 $editar_usuario = null;
 if (isset($_GET['editar'])) {
-    $stmt = $db->query(
+    $stmt = $db->prepare(
         "SELECT u.*, ur.id_rol 
          FROM usuarios u
          LEFT JOIN usuario_roles ur ON u.id_usuario = ur.id_usuario
-         WHERE u.id_usuario = :id",
-        ['id' => $_GET['editar']]
+         WHERE u.id_usuario = :id"
     );
+    $stmt->execute(['id' => $_GET['editar']]);
     $editar_usuario = $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
 // Obtener usuario para cambiar contraseña
 $cambiar_password = null;
 if (isset($_GET['cambiar_password'])) {
-    $stmt = $db->query("SELECT id_usuario, nombre_usuario FROM usuarios WHERE id_usuario = :id", ['id' => $_GET['cambiar_password']]);
+    $stmt = $db->prepare("SELECT id_usuario, nombre_usuario FROM usuarios WHERE id_usuario = :id");
+    $stmt->execute(['id' => $_GET['cambiar_password']]);
     $cambiar_password = $stmt->fetch(PDO::FETCH_ASSOC);
 }
 ?>
@@ -153,8 +194,9 @@ if (isset($_GET['cambiar_password'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIGAE - Gestión de Usuarios</title>
+    <title>SIGAE - Gestión de Usuarios y Roles</title>
     <style>
+        /* (mantén los mismos estilos que ya tenías) */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
@@ -289,10 +331,10 @@ if (isset($_GET['cambiar_password'])) {
                 
                 <div class="form-grid">
                     <input type="text" name="nombre_usuario" placeholder="Usuario" 
-                           value="<?= $editar_usuario['nombre_usuario'] ?? '' ?>" required>
+                           value="<?= htmlspecialchars($editar_usuario['nombre_usuario'] ?? '') ?>" required>
                     
                     <input type="email" name="email" placeholder="Email" 
-                           value="<?= $editar_usuario['email'] ?? '' ?>" required>
+                           value="<?= htmlspecialchars($editar_usuario['email'] ?? '') ?>" required>
                     
                     <?php if (!$editar_usuario): ?>
                         <input type="password" name="password" placeholder="Contraseña" required>
@@ -329,7 +371,7 @@ if (isset($_GET['cambiar_password'])) {
         <!-- FORMULARIO CAMBIAR CONTRASEÑA -->
         <?php if ($cambiar_password): ?>
         <div class="card">
-            <h2>🔑 CAMBIAR CONTRASEÑA - <?= $cambiar_password['nombre_usuario'] ?></h2>
+            <h2>🔑 CAMBIAR CONTRASEÑA - <?= htmlspecialchars($cambiar_password['nombre_usuario']) ?></h2>
             <form method="POST">
                 <input type="hidden" name="id" value="<?= $cambiar_password['id_usuario'] ?>">
                 <div class="form-grid" style="grid-template-columns: 1fr auto;">
@@ -380,7 +422,7 @@ if (isset($_GET['cambiar_password'])) {
                             <a href="?cambiar_password=<?= $u['id_usuario'] ?>" class="btn-password">🔑 PASS</a>
                             <?php if ($u['id_usuario'] != 1): ?>
                                 <a href="?eliminar=<?= $u['id_usuario'] ?>" class="btn-delete" 
-                                   onclick="return confirm('¿ELIMINAR USUARIO <?= $u['nombre_usuario'] ?>?')">🗑️ ELIMINAR</a>
+                                   onclick="return confirm('¿ELIMINAR USUARIO <?= htmlspecialchars($u['nombre_usuario']) ?>?')">🗑️ ELIMINAR</a>
                             <?php endif; ?>
                         </td>
                     </tr>

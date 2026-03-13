@@ -1,13 +1,25 @@
 <?php
 session_start();
+
+// Verificar autenticación
 if (!isset($_SESSION['user_id'])) {
     header('Location: ../auth/login.php');
     exit;
 }
+
+// Incluir funciones de permisos
+require_once __DIR__ . '/../../helpers/functions.php';
+
+// Verificar permisos: solo quienes pueden gestionar o registrar calificaciones
+requerir_permiso(['gestion_calificaciones', 'registrar_calificaciones', '*']);
+
+// Resto del código
 require_once 'C:/xampp/htdocs/SIGAE/app/core/Database.php';
 use App\Core\Database;
+require_once __DIR__ . '/../../helpers/AuditLogger.php';
 
 $db = Database::getInstance();
+$audit = new AuditLogger();
 
 // =============================================
 // REGISTRAR CALIFICACIONES
@@ -23,35 +35,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['registrar'])) {
     
     try {
         // Obtener el id_inscripcion del estudiante para el período actual
-        $stmt_insc = $db->query(
+        $stmt_insc = $db->prepare(
             "SELECT id_inscripcion FROM inscripciones 
-             WHERE id_estudiante = :estudiante AND anio_escolar = :periodo",
-            ['estudiante' => $id_estudiante, 'periodo' => $periodo]
+             WHERE id_estudiante = :estudiante AND anio_escolar = :periodo"
         );
-        $inscripcion = $stmt_insc->fetch();
+        $stmt_insc->execute([
+            'estudiante' => $id_estudiante,
+            'periodo' => $periodo
+        ]);
+        $inscripcion = $stmt_insc->fetch(PDO::FETCH_ASSOC);
         
         if (!$inscripcion) {
             throw new Exception("El estudiante no está inscrito en este período");
         }
         
-        $db->query(
+        // Insertar calificación con RETURNING para obtener el ID
+        $stmt_insert = $db->prepare(
             "INSERT INTO calificaciones 
             (id_estudiante, id_materia, id_docente, valor_calificacion, tipo_evaluacion, 
              periodo_academico, observaciones, id_usuario_registro, id_inscripcion) 
             VALUES 
-            (:estudiante, :materia, :docente, :valor, :tipo, :periodo, :obs, :usuario, :inscripcion)",
-            [
-                'estudiante' => $id_estudiante,
-                'materia' => $id_materia,
-                'docente' => $id_docente,
-                'valor' => $valor,
-                'tipo' => $tipo,
-                'periodo' => $periodo,
-                'obs' => $observaciones,
-                'usuario' => $_SESSION['user_id'],
-                'inscripcion' => $inscripcion['id_inscripcion']
-            ]
+            (:estudiante, :materia, :docente, :valor, :tipo, :periodo, :obs, :usuario, :inscripcion)
+            RETURNING id_calificacion"
         );
+        $stmt_insert->execute([
+            'estudiante' => $id_estudiante,
+            'materia' => $id_materia,
+            'docente' => $id_docente,
+            'valor' => $valor,
+            'tipo' => $tipo,
+            'periodo' => $periodo,
+            'obs' => $observaciones,
+            'usuario' => $_SESSION['user_id'],
+            'inscripcion' => $inscripcion['id_inscripcion']
+        ]);
+        $nuevo_id = $stmt_insert->fetchColumn(); // Obtener el ID retornado
+        
+        // Auditoría de inserción
+        $datos_nuevos = [
+            'id_estudiante' => $id_estudiante,
+            'id_materia' => $id_materia,
+            'id_docente' => $id_docente,
+            'valor' => $valor,
+            'tipo' => $tipo,
+            'periodo' => $periodo,
+            'observaciones' => $observaciones
+        ];
+        $audit->logInsert('calificaciones', $nuevo_id, $datos_nuevos);
+        
         $success = "✅ Calificación registrada exitosamente";
     } catch (Exception $e) {
         $error = "❌ Error al registrar: " . $e->getMessage();
@@ -62,27 +93,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['registrar'])) {
 // ELIMINAR CALIFICACIÓN
 // =============================================
 if (isset($_GET['eliminar'])) {
-    $db->query("DELETE FROM calificaciones WHERE id_calificacion = :id", ['id' => $_GET['eliminar']]);
-    header('Location: index.php?success=eliminado');
-    exit;
+    $id_calificacion = $_GET['eliminar'];
+    
+    try {
+        // Obtener datos antes de eliminar para auditoría
+        $stmt_sel = $db->prepare("SELECT * FROM calificaciones WHERE id_calificacion = :id");
+        $stmt_sel->execute(['id' => $id_calificacion]);
+        $calificacion = $stmt_sel->fetch(PDO::FETCH_ASSOC);
+        
+        if ($calificacion) {
+            // Eliminar la calificación
+            $stmt_del = $db->prepare("DELETE FROM calificaciones WHERE id_calificacion = :id");
+            $stmt_del->execute(['id' => $id_calificacion]);
+            
+            // Auditoría de eliminación
+            $audit->logDelete('calificaciones', $id_calificacion, $calificacion);
+            
+            header('Location: index.php?success=eliminado&ver_seccion=' . ($_GET['ver_seccion'] ?? '') . '&periodo=' . ($_GET['periodo'] ?? ''));
+            exit;
+        } else {
+            header('Location: index.php?error=noexiste');
+            exit;
+        }
+    } catch (Exception $e) {
+        $error = "❌ Error al eliminar: " . $e->getMessage();
+    }
 }
 
 // =============================================
 // OBTENER DATOS PARA LOS SELECTS
 // =============================================
-$secciones = $db->query("SELECT * FROM secciones WHERE estatus = 'activa' ORDER BY nombre_seccion")->fetchAll();
-$materias = $db->query("SELECT * FROM materias WHERE estatus = 'activa' ORDER BY nombre_materia")->fetchAll();
-$docentes = $db->query("SELECT * FROM docentes ORDER BY apellidos, nombres")->fetchAll();
+$stmt_secciones = $db->query("SELECT * FROM secciones WHERE estatus = 'activa' ORDER BY nombre_seccion");
+$secciones = $stmt_secciones->fetchAll();
+
+$stmt_materias = $db->query("SELECT * FROM materias WHERE estatus = 'activa' ORDER BY nombre_materia");
+$materias = $stmt_materias->fetchAll();
+
+$stmt_docentes = $db->query("SELECT * FROM docentes ORDER BY apellidos, nombres");
+$docentes = $stmt_docentes->fetchAll();
 
 // =============================================
-// OBTENER CALIFICACIONES POR SECCIÓN (VERSIÓN CORREGIDA)
+// OBTENER CALIFICACIONES POR SECCIÓN
 // =============================================
 $calificaciones = [];
 $seccion_seleccionada = $_GET['ver_seccion'] ?? null;
 $periodo_seleccionado = $_GET['periodo'] ?? '2026-2027';
 
 if ($seccion_seleccionada) {
-    $calificaciones = $db->query(
+    $stmt_cal = $db->prepare(
         "SELECT 
             c.id_calificacion,
             c.valor_calificacion,
@@ -106,12 +164,15 @@ if ($seccion_seleccionada) {
          JOIN secciones s ON i.id_seccion = s.id_seccion
          WHERE i.id_seccion = :seccion 
            AND i.anio_escolar = :periodo
-         ORDER BY e.apellidos, e.nombres, m.nombre_materia",
-        ['seccion' => $seccion_seleccionada, 'periodo' => $periodo_seleccionado]
-    )->fetchAll();
+         ORDER BY e.apellidos, e.nombres, m.nombre_materia"
+    );
+    $stmt_cal->execute([
+        'seccion' => $seccion_seleccionada,
+        'periodo' => $periodo_seleccionado
+    ]);
+    $calificaciones = $stmt_cal->fetchAll();
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -119,6 +180,7 @@ if ($seccion_seleccionada) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIGAE - Calificaciones</title>
     <style>
+        /* (los estilos se mantienen exactamente igual que en tu archivo) */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Arial, sans-serif;

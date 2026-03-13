@@ -12,22 +12,29 @@ $db = Database::getInstance();
 // Obtener secciones para el filtro
 $secciones = $db->query("SELECT * FROM secciones WHERE estatus = 'activa' ORDER BY nombre_seccion")->fetchAll();
 
-// Obtener estudiantes por sección
+// Obtener estudiantes por sección (basado en inscripciones)
 $estudiantes = [];
 $seccion_seleccionada = $_GET['seccion'] ?? null;
 $periodo = $_GET['periodo'] ?? '2026-2027';
 
 if ($seccion_seleccionada) {
-    $estudiantes = $db->query(
-        "SELECT id_estudiante, cedula, nombres, apellidos 
-         FROM estudiantes 
-         WHERE id_seccion = :seccion AND estatus_academico = 'activo'
-         ORDER BY apellidos, nombres",
-        ['seccion' => $seccion_seleccionada]
-    )->fetchAll();
+    $stmt = $db->prepare(
+        "SELECT e.id_estudiante, e.cedula, e.nombres, e.apellidos
+         FROM estudiantes e
+         JOIN inscripciones i ON e.id_estudiante = i.id_estudiante
+         WHERE i.id_seccion = :seccion 
+           AND i.anio_escolar = :periodo
+           AND e.estatus_academico = 'activo'
+           AND i.estatus_inscripcion = 'activo'
+         ORDER BY e.apellidos, e.nombres"
+    );
+    $stmt->execute([
+        'seccion' => $seccion_seleccionada,
+        'periodo' => $periodo
+    ]);
+    $estudiantes = $stmt->fetchAll();
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -182,7 +189,7 @@ if ($seccion_seleccionada) {
                             <option value="">-- SELECCIONE SECCIÓN --</option>
                             <?php foreach ($secciones as $s): ?>
                                 <option value="<?= $s['id_seccion'] ?>" <?= ($seccion_seleccionada == $s['id_seccion']) ? 'selected' : '' ?>>
-                                    <?= $s['nombre_seccion'] ?>
+                                    <?= htmlspecialchars($s['nombre_seccion']) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -206,7 +213,7 @@ if ($seccion_seleccionada) {
             
             <?php if ($seccion_seleccionada): ?>
                 <h3 style="margin-top: 30px; color: #1a3e60;">
-                    👨‍🎓 ESTUDIANTES DE <?= htmlspecialchars($seccion_seleccionada) ?>
+                    👨‍🎓 ESTUDIANTES DE LA SECCIÓN <?= htmlspecialchars($seccion_seleccionada) ?>
                 </h3>
                 
                 <?php if (empty($estudiantes)): ?>

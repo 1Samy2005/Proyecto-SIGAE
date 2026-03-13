@@ -14,9 +14,13 @@ $db = Database::getInstance();
 // =============================================
 $secciones = $db->query("SELECT * FROM secciones WHERE estatus = 'activa' ORDER BY nombre_seccion")->fetchAll();
 
-$periodos = $db->query(
-    "SELECT DISTINCT periodo_academico FROM calificaciones ORDER BY periodo_academico DESC"
-)->fetchAll();
+// Obtener períodos únicos de calificaciones (ordenados descendente)
+$periodos = $db->query("SELECT DISTINCT periodo_academico FROM calificaciones ORDER BY periodo_academico DESC")->fetchAll();
+
+// Si no hay períodos, establecer uno por defecto
+if (empty($periodos)) {
+    $periodos = [['periodo_academico' => '2026-2027']];
+}
 
 // =============================================
 // FILTROS SELECCIONADOS
@@ -25,14 +29,14 @@ $seccion_seleccionada = $_GET['seccion'] ?? null;
 $periodo_seleccionado = $_GET['periodo'] ?? ($periodos[0]['periodo_academico'] ?? '2026-2027');
 
 // =============================================
-// OBTENER CUADRO DE MÉRITO
+// OBTENER CUADRO DE MÉRITO (USANDO INSCRIPCIONES)
 // =============================================
 $ranking = [];
 $promedio_general_seccion = 0;
 
 if ($seccion_seleccionada) {
-    // Consulta para obtener promedios por estudiante
-    $ranking = $db->query(
+    // Consulta para obtener promedios por estudiante usando inscripciones
+    $stmt_ranking = $db->prepare(
         "SELECT 
             e.id_estudiante,
             e.cedula,
@@ -42,14 +46,21 @@ if ($seccion_seleccionada) {
             ROUND(AVG(c.valor_calificacion), 2) AS promedio,
             RANK() OVER (ORDER BY AVG(c.valor_calificacion) DESC) AS posicion
          FROM estudiantes e
+         JOIN inscripciones i ON e.id_estudiante = i.id_estudiante
          JOIN calificaciones c ON e.id_estudiante = c.id_estudiante
-         WHERE e.id_seccion = :seccion 
+         WHERE i.id_seccion = :seccion 
+           AND i.anio_escolar = :periodo
            AND c.periodo_academico = :periodo
+           AND i.estatus_inscripcion = 'activo'
            AND e.estatus_academico = 'activo'
          GROUP BY e.id_estudiante
-         ORDER BY promedio DESC",
-        ['seccion' => $seccion_seleccionada, 'periodo' => $periodo_seleccionado]
-    )->fetchAll();
+         ORDER BY promedio DESC"
+    );
+    $stmt_ranking->execute([
+        'seccion' => $seccion_seleccionada,
+        'periodo' => $periodo_seleccionado
+    ]);
+    $ranking = $stmt_ranking->fetchAll();
     
     // Calcular promedio general de la sección
     if (!empty($ranking)) {
@@ -59,11 +70,11 @@ if ($seccion_seleccionada) {
 }
 
 // =============================================
-// OBTENER DESTACADOS POR MATERIA
+// OBTENER DESTACADOS POR MATERIA (USANDO INSCRIPCIONES)
 // =============================================
 $destacados_materia = [];
 if ($seccion_seleccionada) {
-    $destacados_materia = $db->query(
+    $stmt_destacados = $db->prepare(
         "SELECT DISTINCT ON (m.id_materia)
             m.id_materia,
             m.codigo_materia,
@@ -74,14 +85,19 @@ if ($seccion_seleccionada) {
          FROM calificaciones c
          JOIN estudiantes e ON c.id_estudiante = e.id_estudiante
          JOIN materias m ON c.id_materia = m.id_materia
-         WHERE e.id_seccion = :seccion 
+         JOIN inscripciones i ON e.id_estudiante = i.id_estudiante
+         WHERE i.id_seccion = :seccion 
+           AND i.anio_escolar = :periodo
            AND c.periodo_academico = :periodo
-         ORDER BY m.id_materia, c.valor_calificacion DESC",
-        ['seccion' => $seccion_seleccionada, 'periodo' => $periodo_seleccionado]
-    )->fetchAll();
+         ORDER BY m.id_materia, c.valor_calificacion DESC"
+    );
+    $stmt_destacados->execute([
+        'seccion' => $seccion_seleccionada,
+        'periodo' => $periodo_seleccionado
+    ]);
+    $destacados_materia = $stmt_destacados->fetchAll();
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -89,6 +105,7 @@ if ($seccion_seleccionada) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIGAE - Cuadros de Mérito</title>
     <style>
+        /* (todos tus estilos se mantienen exactamente igual, no los modifico para no alterar el diseño) */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Arial, sans-serif;

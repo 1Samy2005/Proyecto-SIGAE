@@ -15,41 +15,49 @@ $db = Database::getInstance();
 $secciones = $db->query("SELECT * FROM secciones WHERE estatus = 'activa' ORDER BY nombre_seccion")->fetchAll();
 
 $periodos = $db->query(
-    "SELECT DISTINCT periodo_academico FROM calificaciones ORDER BY periodo_academico DESC"
+    "SELECT DISTINCT anio_escolar FROM inscripciones ORDER BY anio_escolar DESC"
 )->fetchAll();
+
+// Si no hay períodos en inscripciones, usar los de calificaciones como respaldo
+if (empty($periodos)) {
+    $periodos = $db->query(
+        "SELECT DISTINCT periodo_academico FROM calificaciones ORDER BY periodo_academico DESC"
+    )->fetchAll();
+}
 
 // =============================================
 // FILTROS SELECCIONADOS
 // =============================================
 $seccion_seleccionada = $_GET['seccion'] ?? null;
-$periodo1 = $_GET['periodo1'] ?? ($periodos[0]['periodo_academico'] ?? '2026-2027');
-$periodo2 = $_GET['periodo2'] ?? ($periodos[1]['periodo_academico'] ?? '2025-2026');
+$periodo1 = $_GET['periodo1'] ?? ($periodos[0]['anio_escolar'] ?? $periodos[0]['periodo_academico'] ?? '2026-2027');
+$periodo2 = $_GET['periodo2'] ?? ($periodos[1]['anio_escolar'] ?? $periodos[1]['periodo_academico'] ?? '2025-2026');
 
 // =============================================
-// 1. ESTADÍSTICAS GENERALES DE LA SECCIÓN
+// 1. ESTADÍSTICAS GENERALES DE LA SECCIÓN (CORREGIDO)
 // =============================================
 $estadisticas_seccion = null;
 if ($seccion_seleccionada) {
-    $estadisticas_seccion = $db->query(
+    $stmt = $db->prepare(
         "SELECT 
-            COUNT(DISTINCT e.id_estudiante) AS total_estudiantes,
+            COUNT(DISTINCT i.id_estudiante) AS total_estudiantes,
             COUNT(c.id_calificacion) AS total_calificaciones,
             ROUND(AVG(c.valor_calificacion), 2) AS promedio_seccion,
             ROUND(MIN(c.valor_calificacion), 2) AS nota_minima,
             ROUND(MAX(c.valor_calificacion), 2) AS nota_maxima
-         FROM estudiantes e
-         JOIN calificaciones c ON e.id_estudiante = c.id_estudiante
-         WHERE e.id_seccion = :seccion AND c.periodo_academico = :periodo",
-        ['seccion' => $seccion_seleccionada, 'periodo' => $periodo1]
-    )->fetch();
+         FROM calificaciones c
+         JOIN inscripciones i ON c.id_inscripcion = i.id_inscripcion
+         WHERE i.id_seccion = :seccion AND i.anio_escolar = :periodo"
+    );
+    $stmt->execute(['seccion' => $seccion_seleccionada, 'periodo' => $periodo1]);
+    $estadisticas_seccion = $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
 // =============================================
-// 2. PROMEDIOS POR MATERIA (SECCIÓN SELECCIONADA)
+// 2. PROMEDIOS POR MATERIA (CORREGIDO)
 // =============================================
 $promedios_materias = [];
 if ($seccion_seleccionada) {
-    $promedios_materias = $db->query(
+    $stmt = $db->prepare(
         "SELECT 
             m.id_materia,
             m.codigo_materia,
@@ -58,66 +66,72 @@ if ($seccion_seleccionada) {
             ROUND(AVG(c.valor_calificacion), 2) AS promedio,
             ROUND(MIN(c.valor_calificacion), 2) AS minima,
             ROUND(MAX(c.valor_calificacion), 2) AS maxima
-         FROM materias m
-         JOIN calificaciones c ON m.id_materia = c.id_materia
-         JOIN estudiantes e ON c.id_estudiante = e.id_estudiante
-         WHERE e.id_seccion = :seccion AND c.periodo_academico = :periodo
+         FROM calificaciones c
+         JOIN inscripciones i ON c.id_inscripcion = i.id_inscripcion
+         JOIN materias m ON c.id_materia = m.id_materia
+         WHERE i.id_seccion = :seccion AND i.anio_escolar = :periodo
          GROUP BY m.id_materia, m.codigo_materia, m.nombre_materia
-         ORDER BY promedio DESC",
-        ['seccion' => $seccion_seleccionada, 'periodo' => $periodo1]
-    )->fetchAll();
+         ORDER BY promedio DESC"
+    );
+    $stmt->execute(['seccion' => $seccion_seleccionada, 'periodo' => $periodo1]);
+    $promedios_materias = $stmt->fetchAll();
 }
 
 // =============================================
-// 3. COMPARATIVA ENTRE PERÍODOS
+// 3. COMPARATIVA ENTRE PERÍODOS (CORREGIDO)
 // =============================================
 $comparativa_periodos = [];
 if ($seccion_seleccionada) {
-    $comparativa_periodos = $db->query(
+    $stmt = $db->prepare(
         "SELECT 
-            c.periodo_academico,
-            COUNT(DISTINCT e.id_estudiante) AS estudiantes,
+            i.anio_escolar AS periodo_academico,
+            COUNT(DISTINCT i.id_estudiante) AS estudiantes,
             COUNT(c.id_calificacion) AS calificaciones,
             ROUND(AVG(c.valor_calificacion), 2) AS promedio
-         FROM estudiantes e
-         JOIN calificaciones c ON e.id_estudiante = c.id_estudiante
-         WHERE e.id_seccion = :seccion 
-           AND c.periodo_academico IN (:periodo1, :periodo2)
-         GROUP BY c.periodo_academico
-         ORDER BY c.periodo_academico DESC",
-        ['seccion' => $seccion_seleccionada, 'periodo1' => $periodo1, 'periodo2' => $periodo2]
-    )->fetchAll();
+         FROM calificaciones c
+         JOIN inscripciones i ON c.id_inscripcion = i.id_inscripcion
+         WHERE i.id_seccion = :seccion 
+           AND i.anio_escolar IN (:periodo1, :periodo2)
+         GROUP BY i.anio_escolar
+         ORDER BY i.anio_escolar DESC"
+    );
+    $stmt->execute([
+        'seccion' => $seccion_seleccionada,
+        'periodo1' => $periodo1,
+        'periodo2' => $periodo2
+    ]);
+    $comparativa_periodos = $stmt->fetchAll();
 }
 
 // =============================================
-// 4. DISTRIBUCIÓN DE NOTAS (RANGOS)
+// 4. DISTRIBUCIÓN DE NOTAS (RANGOS) (CORREGIDO)
 // =============================================
-$distribucion_notas = [];
+$distribucion_notas = null;
 if ($seccion_seleccionada) {
-    $distribucion_notas = $db->query(
+    $stmt = $db->prepare(
         "SELECT 
-            SUM(CASE WHEN valor_calificacion >= 18 THEN 1 ELSE 0 END) AS excelente,
-            SUM(CASE WHEN valor_calificacion >= 16 AND valor_calificacion < 18 THEN 1 ELSE 0 END) AS destacado,
-            SUM(CASE WHEN valor_calificacion >= 14 AND valor_calificacion < 16 THEN 1 ELSE 0 END) AS bueno,
-            SUM(CASE WHEN valor_calificacion >= 10 AND valor_calificacion < 14 THEN 1 ELSE 0 END) AS aprobado,
-            SUM(CASE WHEN valor_calificacion < 10 THEN 1 ELSE 0 END) AS reprobado
+            SUM(CASE WHEN c.valor_calificacion >= 18 THEN 1 ELSE 0 END) AS excelente,
+            SUM(CASE WHEN c.valor_calificacion >= 16 AND c.valor_calificacion < 18 THEN 1 ELSE 0 END) AS destacado,
+            SUM(CASE WHEN c.valor_calificacion >= 14 AND c.valor_calificacion < 16 THEN 1 ELSE 0 END) AS bueno,
+            SUM(CASE WHEN c.valor_calificacion >= 10 AND c.valor_calificacion < 14 THEN 1 ELSE 0 END) AS aprobado,
+            SUM(CASE WHEN c.valor_calificacion < 10 THEN 1 ELSE 0 END) AS reprobado
          FROM calificaciones c
-         JOIN estudiantes e ON c.id_estudiante = e.id_estudiante
-         WHERE e.id_seccion = :seccion AND c.periodo_academico = :periodo",
-        ['seccion' => $seccion_seleccionada, 'periodo' => $periodo1]
-    )->fetch();
+         JOIN inscripciones i ON c.id_inscripcion = i.id_inscripcion
+         WHERE i.id_seccion = :seccion AND i.anio_escolar = :periodo"
+    );
+    $stmt->execute(['seccion' => $seccion_seleccionada, 'periodo' => $periodo1]);
+    $distribucion_notas = $stmt->fetch(PDO::FETCH_ASSOC);
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIGAE - Reportes y Estadísticas</title>
-    <!-- Chart.js para gráficos -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <style>
+        /* (mantén los mismos estilos que ya tenías) */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
@@ -379,9 +393,10 @@ if ($seccion_seleccionada) {
                     <div class="filtro-grupo">
                         <label>📅 PERÍODO PRINCIPAL</label>
                         <select name="periodo1">
-                            <?php foreach ($periodos as $p): ?>
-                                <option value="<?= $p['periodo_academico'] ?>" <?= ($periodo1 == $p['periodo_academico']) ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($p['periodo_academico']) ?>
+                            <?php foreach ($periodos as $p): 
+                                $valor = $p['anio_escolar'] ?? $p['periodo_academico']; ?>
+                                <option value="<?= $valor ?>" <?= ($periodo1 == $valor) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($valor) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -390,9 +405,10 @@ if ($seccion_seleccionada) {
                     <div class="filtro-grupo">
                         <label>📅 PERÍODO COMPARATIVO</label>
                         <select name="periodo2">
-                            <?php foreach ($periodos as $p): ?>
-                                <option value="<?= $p['periodo_academico'] ?>" <?= ($periodo2 == $p['periodo_academico']) ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($p['periodo_academico']) ?>
+                            <?php foreach ($periodos as $p):
+                                $valor = $p['anio_escolar'] ?? $p['periodo_academico']; ?>
+                                <option value="<?= $valor ?>" <?= ($periodo2 == $valor) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($valor) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -500,7 +516,7 @@ if ($seccion_seleccionada) {
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <?php foreach ($comparativa_periodos as $cp): ?>
                         <div style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
-                            <h3 style="color: #1a3e60; margin-bottom: 15px;">📅 <?= $cp['periodo_academico'] ?></h3>
+                            <h3 style="color: #1a3e60; margin-bottom: 15px;">📅 <?= htmlspecialchars($cp['periodo_academico']) ?></h3>
                             <p><strong>Estudiantes:</strong> <?= $cp['estudiantes'] ?></p>
                             <p><strong>Calificaciones:</strong> <?= $cp['calificaciones'] ?></p>
                             <p style="font-size: 24px; font-weight: bold; color: #667eea; margin-top: 10px;">

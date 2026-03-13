@@ -21,19 +21,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['agregar'])) {
     $telefono = $_POST['telefono'];
     $email = $_POST['email'];
     
-    $db->query(
+    $stmt = $db->prepare(
         "INSERT INTO docentes (cedula, nombres, apellidos, especialidad, titulo_academico, telefono, email, estatus) 
-         VALUES (:cedula, :nombres, :apellidos, :especialidad, :titulo, :telefono, :email, 'activo')",
-        [
-            'cedula' => $cedula,
-            'nombres' => $nombres,
-            'apellidos' => $apellidos,
-            'especialidad' => $especialidad,
-            'titulo' => $titulo,
-            'telefono' => $telefono,
-            'email' => $email
-        ]
+         VALUES (:cedula, :nombres, :apellidos, :especialidad, :titulo, :telefono, :email, 'activo')"
     );
+    $stmt->execute([
+        'cedula' => $cedula,
+        'nombres' => $nombres,
+        'apellidos' => $apellidos,
+        'especialidad' => $especialidad,
+        'titulo' => $titulo,
+        'telefono' => $telefono,
+        'email' => $email
+    ]);
     header('Location: index.php?success=1');
     exit;
 }
@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar'])) {
     $email = $_POST['email'];
     $estatus = $_POST['estatus'];
     
-    $db->query(
+    $stmt = $db->prepare(
         "UPDATE docentes SET 
             cedula = :cedula, 
             nombres = :nombres, 
@@ -62,19 +62,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar'])) {
             telefono = :telefono, 
             email = :email,
             estatus = :estatus
-         WHERE id_docente = :id",
-        [
-            'id' => $id,
-            'cedula' => $cedula,
-            'nombres' => $nombres,
-            'apellidos' => $apellidos,
-            'especialidad' => $especialidad,
-            'titulo' => $titulo,
-            'telefono' => $telefono,
-            'email' => $email,
-            'estatus' => $estatus
-        ]
+         WHERE id_docente = :id"
     );
+    $stmt->execute([
+        'id' => $id,
+        'cedula' => $cedula,
+        'nombres' => $nombres,
+        'apellidos' => $apellidos,
+        'especialidad' => $especialidad,
+        'titulo' => $titulo,
+        'telefono' => $telefono,
+        'email' => $email,
+        'estatus' => $estatus
+    ]);
     header('Location: index.php?success=2');
     exit;
 }
@@ -83,7 +83,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar'])) {
 // CRUD - ELIMINAR DOCENTE
 // =============================================
 if (isset($_GET['eliminar'])) {
-    $db->query("DELETE FROM docentes WHERE id_docente = :id", ['id' => $_GET['eliminar']]);
+    $stmt = $db->prepare("DELETE FROM docentes WHERE id_docente = :id");
+    $stmt->execute(['id' => $_GET['eliminar']]);
     header('Location: index.php?success=3');
     exit;
 }
@@ -97,17 +98,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['asignar'])) {
     $id_seccion = $_POST['id_seccion'];
     $periodo = $_POST['periodo'];
     
-    $db->query(
+    $stmt = $db->prepare(
         "INSERT INTO asignaciones (id_docente, id_materia, id_seccion, periodo_academico) 
          VALUES (:docente, :materia, :seccion, :periodo)
-         ON CONFLICT (id_docente, id_materia, id_seccion, periodo_academico) DO NOTHING",
-        [
-            'docente' => $id_docente,
-            'materia' => $id_materia,
-            'seccion' => $id_seccion,
-            'periodo' => $periodo
-        ]
+         ON CONFLICT (id_docente, id_materia, id_seccion, periodo_academico) DO NOTHING"
     );
+    $stmt->execute([
+        'docente' => $id_docente,
+        'materia' => $id_materia,
+        'seccion' => $id_seccion,
+        'periodo' => $periodo
+    ]);
     header('Location: index.php?success=4');
     exit;
 }
@@ -116,7 +117,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['asignar'])) {
 // CRUD - ELIMINAR ASIGNACIÓN
 // =============================================
 if (isset($_GET['eliminar_asignacion'])) {
-    $db->query("DELETE FROM asignaciones WHERE id_asignacion = :id", ['id' => $_GET['eliminar_asignacion']]);
+    $stmt = $db->prepare("DELETE FROM asignaciones WHERE id_asignacion = :id");
+    $stmt->execute(['id' => $_GET['eliminar_asignacion']]);
     header('Location: index.php?success=5');
     exit;
 }
@@ -124,15 +126,20 @@ if (isset($_GET['eliminar_asignacion'])) {
 // =============================================
 // OBTENER DATOS
 // =============================================
-$docentes = $db->query("SELECT * FROM docentes ORDER BY id_docente DESC")->fetchAll();
+$stmt_docentes = $db->query("SELECT * FROM docentes ORDER BY id_docente DESC");
+$docentes = $stmt_docentes->fetchAll();
 
-$materias = $db->query("SELECT * FROM materias WHERE estatus = 'activa' ORDER BY nombre_materia")->fetchAll();
-$secciones = $db->query("SELECT * FROM secciones WHERE estatus = 'activa' ORDER BY nombre_seccion")->fetchAll();
+$stmt_materias = $db->query("SELECT * FROM materias WHERE estatus = 'activa' ORDER BY nombre_materia");
+$materias = $stmt_materias->fetchAll();
+
+$stmt_secciones = $db->query("SELECT * FROM secciones WHERE estatus = 'activa' ORDER BY nombre_seccion");
+$secciones = $stmt_secciones->fetchAll();
 
 // Obtener docente para editar
 $editar_docente = null;
 if (isset($_GET['editar'])) {
-    $stmt = $db->query("SELECT * FROM docentes WHERE id_docente = :id", ['id' => $_GET['editar']]);
+    $stmt = $db->prepare("SELECT * FROM docentes WHERE id_docente = :id");
+    $stmt->execute(['id' => $_GET['editar']]);
     $editar_docente = $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
@@ -140,15 +147,16 @@ if (isset($_GET['editar'])) {
 $asignaciones_por_docente = [];
 if (isset($_GET['ver_asignaciones'])) {
     $id_docente = $_GET['ver_asignaciones'];
-    $asignaciones_por_docente = $db->query(
+    $stmt = $db->prepare(
         "SELECT a.*, m.nombre_materia, s.nombre_seccion 
          FROM asignaciones a
          JOIN materias m ON a.id_materia = m.id_materia
          JOIN secciones s ON a.id_seccion = s.id_seccion
          WHERE a.id_docente = :docente
-         ORDER BY a.periodo_academico DESC",
-        ['docente' => $id_docente]
-    )->fetchAll();
+         ORDER BY a.periodo_academico DESC"
+    );
+    $stmt->execute(['docente' => $id_docente]);
+    $asignaciones_por_docente = $stmt->fetchAll();
 }
 ?>
 
@@ -159,6 +167,7 @@ if (isset($_GET['ver_asignaciones'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIGAE - Gestión de Docentes</title>
     <style>
+        /* (los estilos se mantienen exactamente igual que en tu archivo original, no los modifico) */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
@@ -486,7 +495,9 @@ if (isset($_GET['ver_asignaciones'])) {
         <!-- ========================================= -->
         <?php if (isset($_GET['ver_asignaciones'])): 
             $id_docente = $_GET['ver_asignaciones'];
-            $docente = $db->query("SELECT * FROM docentes WHERE id_docente = :id", ['id' => $id_docente])->fetch();
+            $stmt_doc = $db->prepare("SELECT * FROM docentes WHERE id_docente = :id");
+            $stmt_doc->execute(['id' => $id_docente]);
+            $docente = $stmt_doc->fetch();
         ?>
         <div class="card">
             <h2>📌 ASIGNAR MATERIAS Y SECCIONES - <?= htmlspecialchars($docente['nombres'] . ' ' . $docente['apellidos']) ?></h2>

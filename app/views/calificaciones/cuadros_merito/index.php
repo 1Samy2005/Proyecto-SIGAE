@@ -14,24 +14,32 @@ $db = Database::getInstance();
 // =============================================
 $secciones = $db->query("SELECT * FROM secciones WHERE estatus = 'activa' ORDER BY nombre_seccion")->fetchAll();
 
+// Obtener períodos desde inscripciones (anio_escolar) en lugar de calificaciones
 $periodos = $db->query(
-    "SELECT DISTINCT periodo_academico FROM calificaciones ORDER BY periodo_academico DESC"
+    "SELECT DISTINCT anio_escolar FROM inscripciones ORDER BY anio_escolar DESC"
 )->fetchAll();
+
+// Si no hay períodos en inscripciones, usar los de calificaciones como respaldo
+if (empty($periodos)) {
+    $periodos = $db->query(
+        "SELECT DISTINCT periodo_academico FROM calificaciones ORDER BY periodo_academico DESC"
+    )->fetchAll();
+}
 
 // =============================================
 // FILTROS SELECCIONADOS
 // =============================================
 $seccion_seleccionada = $_GET['seccion'] ?? null;
-$periodo_seleccionado = $_GET['periodo'] ?? ($periodos[0]['periodo_academico'] ?? '2026-2027');
+$periodo_seleccionado = $_GET['periodo'] ?? ($periodos[0]['anio_escolar'] ?? $periodos[0]['periodo_academico'] ?? '2026-2027');
 
 // =============================================
-// OBTENER CUADRO DE MÉRITO
+// OBTENER CUADRO DE MÉRITO (CORREGIDO)
 // =============================================
 $ranking = [];
 $promedio_general_seccion = 0;
 
 if ($seccion_seleccionada) {
-    // Consulta para obtener promedios por estudiante
+    // Consulta para obtener promedios por estudiante usando inscripciones
     $ranking = $db->query(
         "SELECT 
             e.id_estudiante,
@@ -42,11 +50,12 @@ if ($seccion_seleccionada) {
             ROUND(AVG(c.valor_calificacion), 2) AS promedio,
             RANK() OVER (ORDER BY AVG(c.valor_calificacion) DESC) AS posicion
          FROM estudiantes e
-         JOIN calificaciones c ON e.id_estudiante = c.id_estudiante
-         WHERE e.id_seccion = :seccion 
-           AND c.periodo_academico = :periodo
+         JOIN inscripciones i ON e.id_estudiante = i.id_estudiante
+         JOIN calificaciones c ON c.id_inscripcion = i.id_inscripcion
+         WHERE i.id_seccion = :seccion 
+           AND i.anio_escolar = :periodo
            AND e.estatus_academico = 'activo'
-         GROUP BY e.id_estudiante
+         GROUP BY e.id_estudiante, e.cedula, e.nombres, e.apellidos
          ORDER BY promedio DESC",
         ['seccion' => $seccion_seleccionada, 'periodo' => $periodo_seleccionado]
     )->fetchAll();
@@ -59,7 +68,7 @@ if ($seccion_seleccionada) {
 }
 
 // =============================================
-// OBTENER DESTACADOS POR MATERIA
+// OBTENER DESTACADOS POR MATERIA (CORREGIDO)
 // =============================================
 $destacados_materia = [];
 if ($seccion_seleccionada) {
@@ -72,10 +81,11 @@ if ($seccion_seleccionada) {
             e.apellidos || ', ' || e.nombres AS estudiante,
             c.valor_calificacion AS nota_maxima
          FROM calificaciones c
-         JOIN estudiantes e ON c.id_estudiante = e.id_estudiante
+         JOIN inscripciones i ON c.id_inscripcion = i.id_inscripcion
+         JOIN estudiantes e ON i.id_estudiante = e.id_estudiante
          JOIN materias m ON c.id_materia = m.id_materia
-         WHERE e.id_seccion = :seccion 
-           AND c.periodo_academico = :periodo
+         WHERE i.id_seccion = :seccion 
+           AND i.anio_escolar = :periodo
          ORDER BY m.id_materia, c.valor_calificacion DESC",
         ['seccion' => $seccion_seleccionada, 'periodo' => $periodo_seleccionado]
     )->fetchAll();
@@ -89,6 +99,7 @@ if ($seccion_seleccionada) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIGAE - Cuadros de Mérito</title>
     <style>
+        /* (Los mismos estilos que ya tienes, no es necesario cambiarlos) */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
@@ -383,9 +394,10 @@ if ($seccion_seleccionada) {
                     <div class="filtro-grupo">
                         <label>📅 PERÍODO</label>
                         <select name="periodo">
-                            <?php foreach ($periodos as $p): ?>
-                                <option value="<?= $p['periodo_academico'] ?>" <?= ($periodo_seleccionado == $p['periodo_academico']) ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($p['periodo_academico']) ?>
+                            <?php foreach ($periodos as $p): 
+                                $valor = $p['anio_escolar'] ?? $p['periodo_academico']; ?>
+                                <option value="<?= $valor ?>" <?= ($periodo_seleccionado == $valor) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($valor) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>

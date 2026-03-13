@@ -1,0 +1,63 @@
+@startuml
+title Registro de Calificaciones - SIGAE
+actor Docente
+participant "Vista: Calificaciones" as CalView
+participant "Controlador: CalificacionController" as CalCtrl
+participant "Modelo: EstudianteModel" as EstModel
+participant "Modelo: InscripcionModel" as InsModel
+participant "Modelo: CalificacionModel" as CalModel
+participant "Modelo: MateriaModel" as MatModel
+participant "Base de Datos" as DB
+
+' ==============================================
+' 1. CARGAR DATOS INICIALES
+' ==============================================
+
+Docente -> CalView : 1. Accede a módulo calificaciones
+CalView -> CalCtrl : 2. cargarVista()
+CalCtrl -> MatModel : 3. obtenerMateriasPorDocente(docente_id)
+MatModel -> DB : 4. SELECT * FROM asignaciones WHERE id_docente = id
+DB --> MatModel : 5. retorna materias asignadas
+MatModel --> CalCtrl : 6. lista de materias
+
+CalCtrl -> EstModel : 7. obtenerEstudiantesPorSeccion(seccion_id)
+EstModel -> DB : 8. SELECT * FROM estudiantes e
+DB --> EstModel : 9. retorna estudiantes
+EstModel --> CalCtrl : 10. lista de estudiantes
+
+CalCtrl --> CalView : 11. renderizarVista(materias, estudiantes)
+CalView --> Docente : 12. muestra formulario
+
+' ==============================================
+' 2. REGISTRO DE CALIFICACIÓN
+' ==============================================
+
+Docente -> CalView : 13. selecciona materia y sección
+CalView -> CalCtrl : 14. cargarEstudiantes(seccion_id)
+CalCtrl -> InsModel : 15. obtenerInscripciones(seccion_id, anio_escolar)
+InsModel -> DB : 16. SELECT * FROM inscripciones WHERE id_seccion = id
+DB --> InsModel : 17. retorna inscripciones
+InsModel --> CalCtrl : 18. lista de inscripciones con estudiantes
+CalCtrl --> CalView : 19. renderizarTabla(inscripciones)
+CalView --> Docente : 20. muestra tabla de estudiantes
+
+Docente -> CalView : 21. ingresa notas para estudiantes
+CalView -> CalCtrl : 22. guardarCalificaciones(array_calificaciones)
+
+loop por cada calificación
+    CalCtrl -> CalModel : 23. insertarCalificacion(data)
+    CalModel -> CalModel : 24. validarRango(nota)
+    
+    alt Nota válida (0-20)
+        CalModel -> DB : 25. INSERT INTO calificaciones (id_inscripcion, id_materia, id_docente, valor, tipo_evaluacion, periodo_academico, observaciones, id_usuario_registro)
+        DB --> CalModel : 26. resultado OK
+        CalModel --> CalCtrl : 27. éxito
+    else Nota inválida
+        CalModel --> CalCtrl : 28. error validación
+    end
+end
+
+CalCtrl --> CalView : 29. mostrarResultado(éxitos, errores)
+CalView --> Docente : 30. muestra mensaje de confirmación
+
+@enduml

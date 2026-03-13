@@ -3,11 +3,14 @@ session_start();
 
 // Verificar que el usuario viene del login con 2fa pendiente
 if (!isset($_SESSION['2fa_user_id'])) {
-    header('Location: /SIGAE/app/views/auth/login.php');
+    header('Location: /SIGAE/auth/login.php');
     exit;
 }
 
 require_once '../app/controllers/TwoFactorController.php';
+require_once 'C:/xampp/htdocs/SIGAE/app/core/Database.php'; // Para obtener roles después
+
+use App\Core\Database;
 
 $error = '';
 
@@ -15,16 +18,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $codigo = trim($_POST['codigo'] ?? '');
     $userId = $_SESSION['2fa_user_id'];
     
-    // Instanciar el controlador 2FA
     $controller = new TwoFactorController();
     
-    // Verificar el código usando el método que ya existe
     if ($controller->verificarCodigo($userId, $codigo)) {
         // Código correcto - iniciar sesión
         $_SESSION['user_id'] = $userId;
-        unset($_SESSION['2fa_user_id']);
         
-        // REDIRECCIÓN CORREGIDA - RUTA ABSOLUTA
+        // =============================================
+        // OBTENER ROLES Y PERMISOS (igual que en login)
+        // =============================================
+        $db = Database::getInstance();
+        
+        // Obtener roles
+        $stmt_roles = $db->query(
+            "SELECT r.nombre_rol 
+             FROM usuario_roles ur
+             JOIN roles r ON ur.id_rol = r.id_rol
+             WHERE ur.id_usuario = :id",
+            ['id' => $userId]
+        );
+        $roles = $stmt_roles->fetchAll(PDO::FETCH_COLUMN);
+        
+        // Obtener permisos
+        $permisos = [];
+        if (!empty($roles)) {
+            $placeholders = implode(',', array_fill(0, count($roles), '?'));
+            $stmt_permisos = $db->query(
+                "SELECT permisos FROM roles WHERE nombre_rol IN ($placeholders)",
+                $roles
+            );
+            $rows = $stmt_permisos->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rows as $row) {
+                $perms = json_decode($row['permisos'], true);
+                if (is_array($perms)) {
+                    $permisos = array_merge($permisos, $perms);
+                }
+            }
+            $permisos = array_unique($permisos);
+        }
+        
+        $_SESSION['roles'] = $roles;
+        $_SESSION['permisos'] = $permisos;
+        $_SESSION['rol'] = $roles[0] ?? 'sin_rol';
+        $_SESSION['username'] = $_SESSION['2fa_username']; // Lo guardamos desde la sesión temporal
+        
+        // Limpiar variables temporales
+        unset($_SESSION['2fa_user_id'], $_SESSION['2fa_username']);
+        
         header('Location: /SIGAE/dashboard.php');
         exit;
     } else {
@@ -131,7 +171,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body>
     <div class="container">
         <h1>🔐 Verificación en Dos Pasos</h1>
-        
         <p>Ingrese el código de 6 dígitos de su aplicación autenticadora</p>
         
         <?php if ($error): ?>

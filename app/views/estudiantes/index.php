@@ -26,33 +26,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['agregar'])) {
     try {
         $db->beginTransaction();
         
-        // Insertar estudiante
-        $stmt = $db->query(
+        // Insertar estudiante con consulta preparada
+        $stmt = $db->prepare(
             "INSERT INTO estudiantes 
             (cedula, nombres, apellidos, fecha_nacimiento, lugar_nacimiento, 
              pais_nacimiento, estado_nacimiento, municipio_nacimiento, estatus_academico) 
             VALUES 
             (:cedula, :nombres, :apellidos, :fecha, :lugar, :pais, :estado, :municipio, 'activo') 
-            RETURNING id_estudiante",
-            [
-                'cedula' => $cedula,
-                'nombres' => $nombres,
-                'apellidos' => $apellidos,
-                'fecha' => $fecha_nacimiento,
-                'lugar' => $lugar_nacimiento,
-                'pais' => $pais_nacimiento,
-                'estado' => $estado_nacimiento,
-                'municipio' => $municipio_nacimiento
-            ]
+            RETURNING id_estudiante"
         );
-        $id_estudiante = $stmt->fetch()['id_estudiante'];
+        $stmt->execute([
+            'cedula' => $cedula,
+            'nombres' => $nombres,
+            'apellidos' => $apellidos,
+            'fecha' => $fecha_nacimiento,
+            'lugar' => $lugar_nacimiento,
+            'pais' => $pais_nacimiento,
+            'estado' => $estado_nacimiento,
+            'municipio' => $municipio_nacimiento
+        ]);
+        $id_estudiante = $stmt->fetchColumn(); // Obtener el ID retornado
         
-        // Crear inscripción
-        $db->query(
+        // Crear inscripción con consulta preparada
+        $stmt_insc = $db->prepare(
             "INSERT INTO inscripciones (id_estudiante, id_seccion, anio_escolar, estatus_inscripcion) 
-             VALUES (:estudiante, :seccion, '2026-2027', 'activo')",
-            ['estudiante' => $id_estudiante, 'seccion' => $id_seccion]
+             VALUES (:estudiante, :seccion, '2026-2027', 'activo')"
         );
+        $stmt_insc->execute([
+            'estudiante' => $id_estudiante,
+            'seccion' => $id_seccion
+        ]);
         
         $db->commit();
         header('Location: index.php?success=1');
@@ -84,44 +87,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar'])) {
         $db->beginTransaction();
         
         // 1. Actualizar datos del estudiante
-        $db->query(
+        $stmt_upd = $db->prepare(
             "UPDATE estudiantes SET 
              cedula = :cedula, nombres = :nombres, apellidos = :apellidos,
              fecha_nacimiento = :fecha, lugar_nacimiento = :lugar,
              pais_nacimiento = :pais, estado_nacimiento = :estado, 
              municipio_nacimiento = :municipio, estatus_academico = :estatus
-             WHERE id_estudiante = :id",
-            [
-                'cedula' => $cedula, 'nombres' => $nombres, 'apellidos' => $apellidos,
-                'fecha' => $fecha_nacimiento, 'lugar' => $lugar_nacimiento,
-                'pais' => $pais_nacimiento, 'estado' => $estado_nacimiento,
-                'municipio' => $municipio_nacimiento, 'estatus' => $estatus, 'id' => $id
-            ]
+             WHERE id_estudiante = :id"
         );
+        $stmt_upd->execute([
+            'cedula' => $cedula, 'nombres' => $nombres, 'apellidos' => $apellidos,
+            'fecha' => $fecha_nacimiento, 'lugar' => $lugar_nacimiento,
+            'pais' => $pais_nacimiento, 'estado' => $estado_nacimiento,
+            'municipio' => $municipio_nacimiento, 'estatus' => $estatus, 'id' => $id
+        ]);
         
         // 2. Actualizar la inscripción
         if (!empty($id_seccion)) {
             // Verificar si ya tiene inscripción para el año actual
-            $inscripcion_actual = $db->query(
+            $stmt_insc_check = $db->prepare(
                 "SELECT id_inscripcion FROM inscripciones 
-                 WHERE id_estudiante = :estudiante AND anio_escolar = '2026-2027'",
-                ['estudiante' => $id]
-            )->fetch();
+                 WHERE id_estudiante = :estudiante AND anio_escolar = '2026-2027'"
+            );
+            $stmt_insc_check->execute(['estudiante' => $id]);
+            $inscripcion_actual = $stmt_insc_check->fetch(PDO::FETCH_ASSOC);
             
             if ($inscripcion_actual) {
                 // Actualizar inscripción existente
-                $db->query(
+                $stmt_upd_insc = $db->prepare(
                     "UPDATE inscripciones SET id_seccion = :seccion 
-                     WHERE id_inscripcion = :id",
-                    ['seccion' => $id_seccion, 'id' => $inscripcion_actual['id_inscripcion']]
+                     WHERE id_inscripcion = :id"
                 );
+                $stmt_upd_insc->execute([
+                    'seccion' => $id_seccion,
+                    'id' => $inscripcion_actual['id_inscripcion']
+                ]);
             } else {
                 // Crear nueva inscripción
-                $db->query(
+                $stmt_new_insc = $db->prepare(
                     "INSERT INTO inscripciones (id_estudiante, id_seccion, anio_escolar, estatus_inscripcion) 
-                     VALUES (:estudiante, :seccion, '2026-2027', 'activo')",
-                    ['estudiante' => $id, 'seccion' => $id_seccion]
+                     VALUES (:estudiante, :seccion, '2026-2027', 'activo')"
                 );
+                $stmt_new_insc->execute([
+                    'estudiante' => $id,
+                    'seccion' => $id_seccion
+                ]);
             }
         }
         
@@ -140,7 +150,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar'])) {
 // =============================================
 if (isset($_GET['eliminar'])) {
     $id = $_GET['eliminar'];
-    $db->query("DELETE FROM estudiantes WHERE id_estudiante = :id", ['id' => $id]);
+    $stmt_del = $db->prepare("DELETE FROM estudiantes WHERE id_estudiante = :id");
+    $stmt_del->execute(['id' => $id]);
     header('Location: index.php?success=3');
     exit;
 }
@@ -148,28 +159,31 @@ if (isset($_GET['eliminar'])) {
 // =============================================
 // OBTENER DATOS (VERSIÓN CORREGIDA)
 // =============================================
-$estudiantes = $db->query("
+$stmt_est = $db->query("
     SELECT e.*, s.nombre_seccion 
     FROM estudiantes e
     LEFT JOIN inscripciones i ON e.id_estudiante = i.id_estudiante 
                               AND i.anio_escolar = '2026-2027'
     LEFT JOIN secciones s ON i.id_seccion = s.id_seccion
     ORDER BY e.id_estudiante DESC
-")->fetchAll();
+");
+$estudiantes = $stmt_est->fetchAll();
 
-$secciones = $db->query("SELECT * FROM secciones ORDER BY nombre_seccion")->fetchAll();
+$stmt_sec = $db->query("SELECT * FROM secciones ORDER BY nombre_seccion");
+$secciones = $stmt_sec->fetchAll();
 
 // Obtener estudiante para editar (con su sección actual)
 $editar_estudiante = null;
 if (isset($_GET['editar'])) {
-    $stmt = $db->query("
+    $stmt_edit = $db->prepare("
         SELECT e.*, i.id_seccion 
         FROM estudiantes e
         LEFT JOIN inscripciones i ON e.id_estudiante = i.id_estudiante 
                                   AND i.anio_escolar = '2026-2027'
         WHERE e.id_estudiante = :id
-    ", ['id' => $_GET['editar']]);
-    $editar_estudiante = $stmt->fetch(PDO::FETCH_ASSOC);
+    ");
+    $stmt_edit->execute(['id' => $_GET['editar']]);
+    $editar_estudiante = $stmt_edit->fetch(PDO::FETCH_ASSOC);
 }
 ?>
 
@@ -299,6 +313,14 @@ if (isset($_GET['editar'])) {
             text-decoration: none;
             border-radius: 3px;
         }
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #c3e6cb;
+        }
     </style>
 </head>
 <body>
@@ -314,7 +336,7 @@ if (isset($_GET['editar'])) {
     <div class="container">
         
         <?php if (isset($_GET['success'])): ?>
-            <div class="alert alert-success">
+            <div class="alert-success">
                 <?php 
                 $msgs = [
                     1 => '✅ Estudiante agregado correctamente',

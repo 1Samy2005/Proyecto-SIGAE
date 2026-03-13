@@ -12,24 +12,27 @@ use App\Core\Database;
 $db = Database::getInstance();
 
 $id_seccion = $_GET['seccion'] ?? 0;
-
 if (!$id_seccion) {
     echo json_encode([]);
     exit;
 }
 
-// Obtener estudiantes activos de la sección
-$estudiantes = $db->query(
-    "SELECT e.id_estudiante, e.cedula, e.nombres, e.apellidos
-     FROM estudiantes e
-     JOIN inscripciones i ON e.id_estudiante = i.id_estudiante
-     WHERE i.id_seccion = :seccion 
-       AND i.anio_escolar = '2026-2027'
-       AND e.estatus_academico = 'activo'
-     ORDER BY e.apellidos, e.nombres",
-    ['seccion' => $id_seccion]
-)->fetchAll();
-
-header('Content-Type: application/json');
-echo json_encode($estudiantes);
+try {
+    $stmt = $db->prepare(
+        "SELECT e.id_estudiante, e.cedula, e.nombres, e.apellidos
+         FROM estudiantes e
+         JOIN inscripciones i ON e.id_estudiante = i.id_estudiante
+         WHERE i.id_seccion = :seccion 
+           AND i.anio_escolar = '2026-2027'
+         ORDER BY e.apellidos, e.nombres"
+    );
+    $stmt->execute(['seccion' => $id_seccion]);
+    $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    header('Content-Type: application/json');
+    echo json_encode($estudiantes);
+} catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Error al cargar estudiantes: ' . $e->getMessage()]);
+}
 ?>

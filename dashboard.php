@@ -1,5 +1,9 @@
 <?php
 session_start();
+// echo "Rol actual: " . $_SESSION['rol']; // ← ELIMINA O COMENTA ESTA LÍNEA
+// Diagnóstico temporal: muestra el rol actual
+echo "<!-- El rol actual es: " . htmlspecialchars($_SESSION['rol'] ?? 'no definido') . " -->";
+
 if (!isset($_SESSION['user_id'])) {
     header('Location: app/views/auth/login.php'); // ✅ RUTA RELATIVA CORREGIDA
     exit;
@@ -154,65 +158,78 @@ $total_docentes = $db->query("SELECT COUNT(*) as total FROM docentes")->fetch()[
         </div>
         
         <div class="menu-grid">
-            <!-- MÓDULO DE ESTUDIANTES -->
-            <a href="app/views/estudiantes/index.php" class="menu-item">
-                <span>👥</span>
-                <h3>Estudiantes</h3>
-                <p>Gestión de estudiantes</p>
-            </a>
-            
-            <!-- MÓDULO DE DOCENTES -->
-            <a href="app/views/docentes/index.php" class="menu-item">
-                <span>👨‍🏫</span>
-                <h3>Docentes</h3>
-                <p>Gestión de docentes</p>
-            </a>
-            
-            <!-- MÓDULO DE MATERIAS -->
-            <a href="app/views/materias/index.php" class="menu-item">
-                <span>📚</span>
-                <h3>Materias</h3>
-                <p>Gestión de materias</p>
-            </a>
-        </div>
-    </div>
-</body>
-</html>
-<!-- MÓDULO DE CALIFICACIONES -->
-<a href="app/views/calificaciones/index.php" class="menu-item">
-    <span>📊</span>
-    <h3>Calificaciones</h3>
-    <p>Registro de notas</p>
-</a>
-<!-- MÓDULO DE BOLETAS -->
-<a href="app/views/boletas/index.php" class="menu-item">
-    <span>📄</span>
-    <h3>Boletas</h3>
-    <p>Generar boletas de notas</p>
+	<div class="menu-grid">
+    <!-- MÓDULO DE USUARIOS (solo administradores) -->
+    <?php if ($_SESSION['rol'] === 'administrador'): ?>
+    <a href="app/views/usuarios/index.php" class="menu-item">
+        <span>🔐</span>
+        <h3>Usuarios</h3>
+        <p>Gestión de usuarios</p>
+    </a>
+    <?php endif; ?>
 
-<!-- MÓDULO DE CUADROS DE MÉRITO -->
-<a href="app/views/cuadros_merito/index.php" class="menu-item">
-    <span>🏆</span>
-    <h3>Cuadros de Mérito</h3>
-    <p>Ranking y promedios</p>
-</a>
-<!-- MÓDULO DE REPORTES Y ESTADÍSTICAS -->
-<a href="app/views/reportes/index.php" class="menu-item">
-    <span>📊</span>
-    <h3>Reportes</h3>
-    <p>Estadísticas y gráficos</p>
-</a>
-<a href="http://localhost/SIGAE/app/views/historia/index.php?id=<?= $_SESSION['user_id'] ?>" class="menu-item">
-    <span>📚</span>
-    <h3>Historia</h3>
-    <p>Ver historial de estudios</p>
-</a>
-<?php if ($_SESSION['rol'] === 'administrador'): ?>
-<!-- MÓDULO DE PERÍODOS ACADÉMICOS -->
-<a href="app/views/periodos/index.php" class="menu-item">
-    <span>📅</span>
-    <h3>Períodos</h3>
-    <p>Gestión de lapsos</p>
-</a>
-<?php endif; ?>
+    <!-- MÓDULO DE ESTUDIANTES -->
+    <a href="app/views/estudiantes/index.php" class="menu-item">
+        <span>👥</span>
+        <h3>Estudiantes</h3>
+        <p>Gestión de estudiantes</p>
+    </a>
 
+    <!-- MÓDULO DE DOCENTES -->
+    <a href="app/views/docentes/index.php" class="menu-item">
+        <span>👨‍🏫</span>
+        <h3>Docentes</h3>
+        <p>Gestión de docentes</p>
+    </a>
+
+    <!-- MÓDULO DE MATERIAS -->
+    <a href="app/views/materias/index.php" class="menu-item">
+        <span>📚</span>
+        <h3>Materias</h3>
+        <p>Gestión de materias</p>
+    </a>
+
+    <!-- MÓDULO DE CALIFICACIONES -->
+    <a href="app/views/calificaciones/index.php" class="menu-item">
+        <span>📊</span>
+        <h3>Calificaciones</h3>
+        <p>Registro de notas</p>
+    </a>
+
+    <!-- MÓDULO DE BOLETAS -->
+    <a href="app/views/boletas/index.php" class="menu-item">
+        <span>📄</span>
+        <h3>Boletas</h3>
+        <p>Generar boletas</p>
+    </a>
+
+    <!-- MÓDULO DE CUADROS DE MÉRITO -->
+    <a href="app/views/cuadros_merito/index.php" class="menu-item">
+        <span>🏆</span>
+        <h3>Cuadros de Mérito</h3>
+        <p>Ranking</p>
+    </a>
+
+    <!-- MÓDULO DE REPORTES -->
+    <a href="app/views/reportes/index.php" class="menu-item">
+        <span>📈</span>
+        <h3>Reportes</h3>
+        <p>Estadísticas</p>
+    </a>
+
+    <!-- MÓDULO DE HISTORIA ACADÉMICA (con el ID del usuario actual) -->
+    <a href="app/views/historia/index.php?id=<?= $_SESSION['user_id'] ?>" class="menu-item">
+        <span>📚</span>
+        <h3>Historia</h3>
+        <p>Ver historial</p>
+    </a>
+
+    <!-- MÓDULO DE PERÍODOS (solo administradores) -->
+    <?php if ($_SESSION['rol'] === 'administrador'): ?>
+    <a href="app/views/periodos/index.php" class="menu-item">
+        <span>📅</span>
+        <h3>Períodos</h3>
+        <p>Gestión de lapsos</p>
+    </a>
+    <?php endif; ?>
+</div>

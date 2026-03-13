@@ -1,0 +1,72 @@
+@startuml
+skinparam classAttributeIconSize 0
+skinparam classBackgroundColor #FFF2CC
+skinparam classBorderColor #B8860B
+
+class Database {
+    + getInstance() : Database
+    + query(sql: string, params: array) : PDOStatement
+    + beginTransaction() : void
+    + commit() : void
+    + rollback() : void
+    + lastInsertId() : int
+}
+
+abstract class Model {
+    # db : Database
+    # tabla : string
+    # idField : string
+    + find(id: int) : array
+    + findAll() : array
+    + insert(data: array) : int
+    + update(id: int, data: array) : boolean
+    + delete(id: int) : boolean
+}
+
+abstract class Controller {
+    # db : Database
+    # session : SessionManager
+    + render(view: string, data: array) : void
+    + redirect(url: string) : void
+    + jsonResponse(data: array) : void
+}
+
+class SessionManager {
+    + set(key: string, value: any) : void
+    + get(key: string) : any
+    + delete(key: string) : void
+    + destroy() : void
+}
+
+class Router {
+    + add(method: string, route: string, handler: callable) : void
+    + dispatch(url: string, method: string) : void
+}
+
+class Validator {
+    + validate(data: array, rules: array) : array
+    + sanitize(input: string) : string
+    + isEmail(email: string) : boolean
+}
+
+' ==============================================
+' RELACIONES
+' ==============================================
+Controller <|-- AuthController
+Controller <|-- EstudianteController
+Controller <|-- CalificacionController
+
+Model <|-- EstudianteModel
+Model <|-- DocenteModel
+Model <|-- CalificacionModel
+
+Controller --> Model : usa
+Controller --> SessionManager : usa
+Controller --> Validator : usa
+
+Database <-- Model : utiliza
+
+note top of Database : Patrón Singleton
+note left of Model : Clase base abstracta
+note right of Controller : Clase base abstracta
+@enduml

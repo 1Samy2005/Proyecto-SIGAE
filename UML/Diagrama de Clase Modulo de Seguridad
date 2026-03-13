@@ -1,0 +1,64 @@
+@startuml
+skinparam classAttributeIconSize 0
+skinparam classBackgroundColor #FFE6E6
+skinparam classBorderColor #8B0000
+
+class AuthController {
+    + login(username: string, password: string) : boolean
+    + logout() : void
+    + verificar2FA(user_id: int, codigo: string) : boolean
+    + configurar2FA(user_id: int) : string
+    + activar2FA(user_id: int, codigo: string, secreto: string) : boolean
+    + generarCodigosRecuperacion() : array
+}
+
+class Usuario {
+    + id_usuario : int
+    + nombre_usuario : string
+    + email : string
+    + password_hash : string
+    + tfa_activo : boolean
+    + tfa_secreto : string
+    + tfa_codigos : array
+    + intentos_fallidos : int
+    + bloqueado_hasta : datetime
+    + autenticar(password: string) : boolean
+    + verificar2FA(codigo: string) : boolean
+}
+
+class SessionManager {
+    + iniciarSesion() : void
+    + set(key: string, value: any) : void
+    + get(key: string) : any
+    + destruir() : void
+    + regenerarID() : void
+}
+
+class Rol {
+    + id_rol : int
+    + nombre : string
+    + permisos : array
+    + tienePermiso(permiso: string) : boolean
+}
+
+class UsuarioRol {
+    + usuario_id : int
+    + rol_id : int
+    + asignado_por : int
+    + fecha : date
+}
+
+' ==============================================
+' RELACIONES
+' ==============================================
+AuthController --> Usuario : gestiona
+AuthController --> SessionManager : maneja
+
+Usuario "1" -- "many" UsuarioRol
+Rol "1" -- "many" UsuarioRol
+
+note right of Usuario : Campos para 2FA:
+note right of Usuario : - tfa_activo
+note right of Usuario : - tfa_secreto
+note right of Usuario : - tfa_codigos
+@enduml

@@ -1,0 +1,262 @@
+@startuml
+' Configuración de colores y estilos
+skinparam classAttributeIconSize 0
+skinparam classBackgroundColor #F0F8FF
+skinparam classBorderColor #1A3E60
+skinparam classBorderThickness 2
+skinparam arrowColor #1A3E60
+skinparam arrowThickness 2
+
+' ==============================================
+' ENUMERACIONES
+' ==============================================
+enum EstatusUsuario {
+    ACTIVO
+    INACTIVO
+    BLOQUEADO
+}
+
+enum EstatusAcademico {
+    ACTIVO
+    INACTIVO
+    GRADUADO
+    RETIRADO
+}
+
+enum TipoEvaluacion {
+    PARCIAL
+    FINAL
+    RECUPERACION
+    PROYECTO
+    TALLER
+    LABORATORIO
+}
+
+' ==============================================
+' CLASES ABSTRACTAS
+' ==============================================
+abstract class Usuario {
+    # int id_usuario
+    # string nombre_usuario
+    # string email
+    # string password_hash
+    # bool tfa_activo
+    # string tfa_secreto
+    # array tfa_codigos_recuperacion
+    # EstatusUsuario estatus
+    # DateTime ultimo_acceso
+    + autenticar(string password): bool
+    + tienePermiso(string permiso): bool
+    + activar2FA(string secreto): bool
+    + desactivar2FA(): bool
+    + verificarCodigo2FA(string codigo): bool
+    {abstract} obtenerRol(): string
+}
+
+' ==============================================
+' CLASES DERIVADAS DE USUARIO
+' ==============================================
+class Administrador {
+    - int id_administrador
+    + obtenerRol(): string
+    + gestionarUsuarios()
+    + gestionarRoles()
+    + verAuditoria()
+}
+
+class PersonalControlEstudio {
+    - int id_control
+    - string cargo
+    + obtenerRol(): string
+    + gestionarEstudiantes()
+    + gestionarDocentes()
+    + gestionarMaterias()
+    + generarBoletas()
+    + generarReportes()
+}
+
+class Docente {
+    - int id_docente
+    - string especialidad
+    - string titulo_academico
+    + obtenerRol(): string
+    + registrarCalificaciones()
+    + consultarCalificaciones()
+    + verEstudiantesAsignados()
+}
+
+class Administrativo {
+    - int id_administrativo
+    - string area
+    + obtenerRol(): string
+    + consultarReportes()
+    + verEstadisticas()
+}
+
+' ==============================================
+' CLASES DE DOMINIO
+' ==============================================
+class Estudiante {
+    - int id_estudiante
+    - string cedula
+    - string nombres
+    - string apellidos
+    - date fecha_nacimiento
+    - string lugar_nacimiento
+    - string pais_nacimiento
+    - string estado_nacimiento
+    - string municipio_nacimiento
+    - EstatusAcademico estatus_academico
+    + getNombreCompleto(): string
+    + calcularPromedioAnual(string anio_escolar): float
+    + obtenerHistorialAcademico(): array
+}
+
+class DocenteInfo {
+    - int id_docente
+    - string cedula
+    - string nombres
+    - string apellidos
+    - string especialidad
+    - string titulo_academico
+    - string telefono
+    - string email
+    + getNombreCompleto(): string
+}
+
+class Materia {
+    - int id_materia
+    - string codigo_materia
+    - string nombre_materia
+    - string area_conocimiento
+    - bool estatus
+    + getCodigoNombre(): string
+}
+
+class Seccion {
+    - int id_seccion
+    - string nombre_seccion
+    - string nivel_academico
+    - string anio_escolar
+    - string turno
+    - bool estatus
+    + getNombreCompleto(): string
+}
+
+class Inscripcion {
+    - int id_inscripcion
+    - string anio_escolar
+    - string estatus_inscripcion
+    - date fecha_inscripcion
+    + getPeriodo(): string
+    + calcularPromedioPeriodo(): float
+}
+
+class PeriodoAcademico {
+    - int id_periodo
+    - string nombre_periodo
+    - string codigo_periodo
+    - string anio_escolar
+    - date fecha_inicio
+    - date fecha_fin
+    - float ponderacion
+    - bool activo
+    + getNombreCompleto(): string
+}
+
+class Calificacion {
+    - int id_calificacion
+    - float valor_calificacion
+    - TipoEvaluacion tipo_evaluacion
+    - string observaciones
+    - DateTime fecha_registro
+    + getValorFormateado(): string
+    + esAprobatoria(): bool
+}
+
+class Rol {
+    - int id_rol
+    - string nombre_rol
+    - string descripcion
+    - json permisos
+    + tienePermiso(string permiso): bool
+}
+
+class UsuarioRol {
+    - DateTime asignado_en
+}
+
+class Auditoria {
+    - int id_auditoria
+    - string tabla_afectada
+    - string operacion
+    - int id_registro_afectado
+    - json valores_anteriores
+    - json valores_nuevos
+    - string direccion_ip
+    - string user_agent
+    - DateTime fecha_operacion
+}
+
+class Boleta {
+    - int id_boleta
+    - string periodo_academico
+    - float promedio_general
+    - int posicion_ranking
+    - date fecha_emision
+    - string contenido_html
+    + generarPDF(): string
+    + imprimir()
+}
+
+' ==============================================
+' RELACIONES DE HERENCIA
+' ==============================================
+Usuario <|-- Administrador
+Usuario <|-- PersonalControlEstudio
+Usuario <|-- Docente
+Usuario <|-- Administrativo
+
+' ==============================================
+' RELACIONES DE ASOCIACIÓN
+' ==============================================
+' Relaciones de Usuario con Rol (muchos a muchos)
+Usuario "1" -- "many" UsuarioRol
+Rol "1" -- "many" UsuarioRol
+
+' Relaciones de Estudiante
+Estudiante "1" -- "many" Inscripcion
+Seccion "1" -- "many" Inscripcion
+
+' Relaciones de Inscripción
+Inscripcion "1" -- "many" Calificacion
+
+' Relaciones de Calificación
+Materia "1" -- "many" Calificacion
+DocenteInfo "1" -- "many" Calificacion
+PeriodoAcademico "1" -- "many" Calificacion
+
+' Relación de DocenteInfo con Docente (usuario)
+Docente "1" -- "1" DocenteInfo
+
+' Relación de Inscripción con Boleta
+Inscripcion "1" -- "many" Boleta
+
+' Relación de Auditoria con Usuario
+Usuario "1" -- "many" Auditoria
+
+' Relaciones de Composición (más fuertes)
+Estudiante "1" *-- "many" Inscripcion : compone
+Seccion "1" *-- "many" Inscripcion : compone
+Materia "1" *-- "many" Calificacion : compone
+
+' ==============================================
+' NOTAS ACLARATORIAS
+' ==============================================
+note top of Usuario : Clase base abstracta\ngestiona autenticación y 2FA
+note bottom of Inscripcion : Tabla pivote fundamental\npara la historia académica
+note bottom of Calificacion : Valor entre 0 y 20
+note right of PeriodoAcademico : Ej: "Lapso 1", "Lapso 2", "Final"\ncon ponderación porcentual
+note left of Boleta : Generada en PDF con Dompdf
+
+@enduml

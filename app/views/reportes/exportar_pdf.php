@@ -21,15 +21,32 @@ $periodo1 = $_GET['periodo1'] ?? '2026-2027';
 $periodo2 = $_GET['periodo2'] ?? '2025-2026';
 
 // =============================================
-// OBTENER DATOS DE LA SECCIÓN
+// OBTENER DATOS DE LA SECCIÓN (CONSULTA PREPARADA)
 // =============================================
-$seccion_info = $db->query(
-    "SELECT nombre_seccion FROM secciones WHERE id_seccion = :seccion",
-    ['seccion' => $seccion]
-)->fetch();
+$stmt_seccion = $db->prepare("SELECT nombre_seccion FROM secciones WHERE id_seccion = :seccion");
+$stmt_seccion->execute(['seccion' => $seccion]);
+$seccion_info = $stmt_seccion->fetch(PDO::FETCH_ASSOC);
 
 // =============================================
-// GENERAR HTML PARA EL PDF (CON LOGO INCRUSTADO EN BASE64)
+// CARGAR LOGO Y CONVERTIR A BASE64
+// =============================================
+$logoPath = 'C:/xampp/htdocs/SIGAE/public/assets/img/logo-escuela.png';
+$logoSrc = '';
+
+if (file_exists($logoPath) && is_readable($logoPath)) {
+    $logoData = file_get_contents($logoPath);
+    if ($logoData !== false) {
+        $logoBase64 = base64_encode($logoData);
+        $logoSrc = 'data:image/png;base64,' . $logoBase64;
+    } else {
+        error_log("exportar_pdf.php: No se pudo leer el archivo del logo: $logoPath");
+    }
+} else {
+    error_log("exportar_pdf.php: El archivo del logo no existe o no es legible: $logoPath");
+}
+
+// =============================================
+// GENERAR HTML PARA EL PDF
 // =============================================
 $html = '
 <!DOCTYPE html>
@@ -45,37 +62,26 @@ $html = '
         }
         .header {
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
+            gap: 20px;
             margin-bottom: 30px;
             padding-bottom: 20px;
             border-bottom: 3px solid #1a3e60;
         }
         .logo {
-            width: 100px;
+            width: 80px;
             height: auto;
-            margin-bottom: 15px;
         }
-        .institucion {
+        .titulo h1 {
             color: #1a3e60;
-            font-size: 22px;
-            font-weight: bold;
-            text-align: center;
+            font-size: 24px;
             margin-bottom: 5px;
         }
-        .sistema {
+        .titulo h2 {
             color: #666;
-            font-size: 16px;
-            font-weight: normal;
-            text-align: center;
-            margin-bottom: 5px;
-        }
-        .reporte {
-            color: #1a3e60;
             font-size: 18px;
-            font-weight: bold;
-            text-align: center;
+            font-weight: normal;
         }
         .info-section {
             background: #f8f9fa;
@@ -128,16 +134,22 @@ $html = '
     </style>
 </head>
 <body>
-   <!-- HEADER CON LOGO CENTRADO Y TEXTO INSTITUCIONAL -->
-<div class="header">
-   <img src="http://localhost/SIGAE/public/assets/img/logo-escuela.png" 
-     class="logo" 
-     alt="Logo U.E.N. José Agustín Marquiegüi">
-      
-    <div class="institucion">U.E.N. JOSÉ AGUSTÍN MARQUIEGÜI</div>
-    <div class="sistema">SISTEMA DE GESTIÓN ACADÉMICA - SIGAE</div>
-    <div class="reporte">REPORTE DE RENDIMIENTO ACADÉMICO</div>
-</div>
+    <div class="header">';
+
+// Agregar el logo si se pudo cargar
+if ($logoSrc) {
+    $html .= '<img src="' . $logoSrc . '" class="logo" alt="Logo U.E.N. José Agustín Marquiegui">';
+} else {
+    $html .= '<div style="width:80px; height:80px; background:#f0f0f0; display:flex; align-items:center; justify-content:center;">[LOGO]</div>';
+}
+
+$html .= '
+        <div class="titulo">
+            <h1>U.E.N. JOSÉ AGUSTÍN MARQUIEGÜI</h1>
+            <h2>SISTEMA DE GESTIÓN ACADÉMICA - SIGAE</h2>
+            <h2>REPORTE DE RENDIMIENTO ACADÉMICO</h2>
+        </div>
+    </div>
     
     <div class="info-section">
         <div class="info-item">
@@ -159,10 +171,10 @@ $html = '
     </div>';
 
 // =============================================
-// REPORTE POR MATERIAS
+// REPORTE POR MATERIAS (CORREGIDO CON INSCRIPCIONES)
 // =============================================
 if ($tipo == 'materias') {
-    $data = $db->query(
+    $stmt = $db->prepare(
         "SELECT 
             m.codigo_materia,
             m.nombre_materia,
@@ -170,16 +182,19 @@ if ($tipo == 'materias') {
             ROUND(AVG(c.valor_calificacion), 2) AS promedio,
             ROUND(MIN(c.valor_calificacion), 2) AS minima,
             ROUND(MAX(c.valor_calificacion), 2) AS maxima
-         FROM materias m
-         JOIN calificaciones c ON m.id_materia = c.id_materia
-         JOIN estudiantes e ON c.id_estudiante = e.id_estudiante
-         WHERE e.id_seccion = :seccion AND c.periodo_academico = :periodo
+         FROM calificaciones c
+         JOIN inscripciones i ON c.id_inscripcion = i.id_inscripcion
+         JOIN materias m ON c.id_materia = m.id_materia
+         WHERE i.id_seccion = :seccion 
+           AND i.anio_escolar = :periodo
+           AND c.periodo_academico = :periodo
          GROUP BY m.id_materia, m.codigo_materia, m.nombre_materia
-         ORDER BY promedio DESC",
-        ['seccion' => $seccion, 'periodo' => $periodo]
-    )->fetchAll();
+         ORDER BY promedio DESC"
+    );
+    $stmt->execute(['seccion' => $seccion, 'periodo' => $periodo]);
+    $data = $stmt->fetchAll();
     
-    $html .= '<h2 style="color: #1a3e60; margin-top: 30px;">📚 PROMEDIOS POR MATERIA</h2>';
+    $html .= '<h2 style="color: #1a3e60; margin-top: 30px;">PROMEDIOS POR MATERIA</h2>';
     $html .= '<table>
                 <thead>
                     <tr>
@@ -195,9 +210,9 @@ if ($tipo == 'materias') {
     
     foreach ($data as $row) {
         $html .= '<tr>
-                    <td><strong>' . $row['codigo_materia'] . '</strong></td>
-                    <td>' . $row['nombre_materia'] . '</td>
-                    <td style="text-align: center;">' . $row['total_notas'] . '</td>
+                    <td><strong>' . htmlspecialchars($row['codigo_materia']) . '</strong></td>
+                    <td>' . htmlspecialchars($row['nombre_materia']) . '</td>
+                    <td style="text-align: center;">' . (int)$row['total_notas'] . '</td>
                     <td style="font-weight: bold; color: #1a3e60;">' . number_format($row['promedio'], 2) . '</td>
                     <td>' . number_format($row['minima'], 2) . '</td>
                     <td>' . number_format($row['maxima'], 2) . '</td>
@@ -208,25 +223,31 @@ if ($tipo == 'materias') {
 }
 
 // =============================================
-// REPORTE COMPARATIVO
+// REPORTE COMPARATIVO (CORREGIDO CON INSCRIPCIONES)
 // =============================================
 if ($tipo == 'comparativa') {
-    $data = $db->query(
+    $stmt = $db->prepare(
         "SELECT 
-            c.periodo_academico,
-            COUNT(DISTINCT e.id_estudiante) AS estudiantes,
+            i.anio_escolar AS periodo_academico,
+            COUNT(DISTINCT i.id_estudiante) AS estudiantes,
             COUNT(c.id_calificacion) AS calificaciones,
             ROUND(AVG(c.valor_calificacion), 2) AS promedio
-         FROM estudiantes e
-         JOIN calificaciones c ON e.id_estudiante = c.id_estudiante
-         WHERE e.id_seccion = :seccion 
-           AND c.periodo_academico IN (:periodo1, :periodo2)
-         GROUP BY c.periodo_academico
-         ORDER BY c.periodo_academico DESC",
-        ['seccion' => $seccion, 'periodo1' => $periodo1, 'periodo2' => $periodo2]
-    )->fetchAll();
+         FROM calificaciones c
+         JOIN inscripciones i ON c.id_inscripcion = i.id_inscripcion
+         WHERE i.id_seccion = :seccion 
+           AND i.anio_escolar IN (:periodo1, :periodo2)
+           AND c.periodo_academico = i.anio_escolar
+         GROUP BY i.anio_escolar
+         ORDER BY i.anio_escolar DESC"
+    );
+    $stmt->execute([
+        'seccion' => $seccion,
+        'periodo1' => $periodo1,
+        'periodo2' => $periodo2
+    ]);
+    $data = $stmt->fetchAll();
     
-    $html .= '<h2 style="color: #1a3e60; margin-top: 30px;">🔄 COMPARATIVA ENTRE PERÍODOS</h2>';
+    $html .= '<h2 style="color: #1a3e60; margin-top: 30px;">COMPARATIVA ENTRE PERÍODOS</h2>';
     $html .= '<table>
                 <thead>
                     <tr>
@@ -240,9 +261,9 @@ if ($tipo == 'comparativa') {
     
     foreach ($data as $row) {
         $html .= '<tr>
-                    <td><strong>' . $row['periodo_academico'] . '</strong></td>
-                    <td style="text-align: center;">' . $row['estudiantes'] . '</td>
-                    <td style="text-align: center;">' . $row['calificaciones'] . '</td>
+                    <td><strong>' . htmlspecialchars($row['periodo_academico']) . '</strong></td>
+                    <td style="text-align: center;">' . (int)$row['estudiantes'] . '</td>
+                    <td style="text-align: center;">' . (int)$row['calificaciones'] . '</td>
                     <td style="font-weight: bold; color: #1a3e60;">' . number_format($row['promedio'], 2) . '</td>
                   </tr>';
     }
@@ -250,8 +271,11 @@ if ($tipo == 'comparativa') {
     $html .= '</tbody></table>';
 }
 
+// =============================================
+// FOOTER
+// =============================================
 $html .= '<div class="footer">
-            <p>📄 Este reporte fue generado automáticamente por el Sistema SIGAE</p>
+            <p>Este reporte fue generado automáticamente por el Sistema SIGAE</p>
             <p>U.E.N. José Agustín Marquiegüi - Caracas, Venezuela</p>
           </div>
         </body>
@@ -264,7 +288,7 @@ $options = new Options();
 $options->set('isHtml5ParserEnabled', true);
 $options->set('isPhpEnabled', true);
 $options->set('defaultFont', 'Arial');
-$options->set('isRemoteEnabled', true); // ✅ PERMITE CARGAR IMÁGENES DESDE HTTP
+$options->set('isRemoteEnabled', true);
 
 $dompdf = new Dompdf($options);
 $dompdf->loadHtml($html);
