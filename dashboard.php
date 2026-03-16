@@ -89,9 +89,11 @@ $total_docentes = $db->query("SELECT COUNT(*) as total FROM docentes")->fetch()[
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             margin-bottom: 20px;
         }
+        /* Contenedor de los cuadros de menú */
         .menu-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
             gap: 20px;
             margin-top: 30px;
         }
@@ -104,6 +106,7 @@ $total_docentes = $db->query("SELECT COUNT(*) as total FROM docentes")->fetch()[
             text-align: center;
             color: #1a3e60;
             transition: transform 0.2s, box-shadow 0.2s;
+            width: 250px; /* Ancho fijo para uniformidad */
         }
         .menu-item:hover {
             transform: translateY(-5px);
@@ -157,79 +160,91 @@ $total_docentes = $db->query("SELECT COUNT(*) as total FROM docentes")->fetch()[
             <p style="margin-top: 10px; color: green;">¡Felicidades! Has completado la instalación y configuración del sistema.</p>
         </div>
         
+        <!-- Contenedor de los cuadros de menú -->
         <div class="menu-grid">
-	<div class="menu-grid">
-    <!-- MÓDULO DE USUARIOS (solo administradores) -->
-    <?php if ($_SESSION['rol'] === 'administrador'): ?>
-    <a href="app/views/usuarios/index.php" class="menu-item">
-        <span>🔐</span>
-        <h3>Usuarios</h3>
-        <p>Gestión de usuarios</p>
-    </a>
-    <?php endif; ?>
+            <!-- MÓDULO DE USUARIOS (solo administradores) -->
+            <?php if ($_SESSION['rol'] === 'administrador'): ?>
+            <a href="app/views/usuarios/index.php" class="menu-item">
+                <span>🔐</span>
+                <h3>Usuarios</h3>
+                <p>Gestión de usuarios</p>
+            </a>
+            <?php endif; ?>
 
-    <!-- MÓDULO DE ESTUDIANTES -->
-    <a href="app/views/estudiantes/index.php" class="menu-item">
-        <span>👥</span>
-        <h3>Estudiantes</h3>
-        <p>Gestión de estudiantes</p>
-    </a>
+            <!-- MÓDULO DE ESTUDIANTES -->
+            <a href="app/views/estudiantes/index.php" class="menu-item">
+                <span>👥</span>
+                <h3>Estudiantes</h3>
+                <p>Gestión de estudiantes</p>
+            </a>
 
-    <!-- MÓDULO DE DOCENTES -->
-    <a href="app/views/docentes/index.php" class="menu-item">
-        <span>👨‍🏫</span>
-        <h3>Docentes</h3>
-        <p>Gestión de docentes</p>
-    </a>
+            <!-- MÓDULO DE DOCENTES -->
+            <a href="app/views/docentes/index.php" class="menu-item">
+                <span>👨‍🏫</span>
+                <h3>Docentes</h3>
+                <p>Gestión de docentes</p>
+            </a>
 
-    <!-- MÓDULO DE MATERIAS -->
-    <a href="app/views/materias/index.php" class="menu-item">
-        <span>📚</span>
-        <h3>Materias</h3>
-        <p>Gestión de materias</p>
-    </a>
+            <!-- MÓDULO DE MATERIAS -->
+            <a href="app/views/materias/index.php" class="menu-item">
+                <span>📚</span>
+                <h3>Materias</h3>
+                <p>Gestión de materias</p>
+            </a>
 
-    <!-- MÓDULO DE CALIFICACIONES -->
-    <a href="app/views/calificaciones/index.php" class="menu-item">
-        <span>📊</span>
-        <h3>Calificaciones</h3>
-        <p>Registro de notas</p>
-    </a>
+            <!-- MÓDULO DE CALIFICACIONES -->
+            <a href="app/views/calificaciones/index.php" class="menu-item">
+                <span>📊</span>
+                <h3>Calificaciones</h3>
+                <p>Registro de notas</p>
+            </a>
 
-    <!-- MÓDULO DE BOLETAS -->
-    <a href="app/views/boletas/index.php" class="menu-item">
-        <span>📄</span>
-        <h3>Boletas</h3>
-        <p>Generar boletas</p>
-    </a>
+            <!-- MÓDULO DE BOLETAS -->
+            <a href="app/views/boletas/index.php" class="menu-item">
+                <span>📄</span>
+                <h3>Boletas</h3>
+                <p>Generar boletas</p>
+            </a>
 
-    <!-- MÓDULO DE CUADROS DE MÉRITO -->
-    <a href="app/views/cuadros_merito/index.php" class="menu-item">
-        <span>🏆</span>
-        <h3>Cuadros de Mérito</h3>
-        <p>Ranking</p>
-    </a>
+            <!-- MÓDULO DE CUADROS DE MÉRITO -->
+            <a href="app/views/cuadros_merito/index.php" class="menu-item">
+                <span>🏆</span>
+                <h3>Cuadros de Mérito</h3>
+                <p>Ranking</p>
+            </a>
 
-    <!-- MÓDULO DE REPORTES -->
-    <a href="app/views/reportes/index.php" class="menu-item">
-        <span>📈</span>
-        <h3>Reportes</h3>
-        <p>Estadísticas</p>
-    </a>
+            <!-- MÓDULO DE REPORTES -->
+            <a href="app/views/reportes/index.php" class="menu-item">
+                <span>📈</span>
+                <h3>Reportes</h3>
+                <p>Estadísticas</p>
+            </a>
 
-    <!-- MÓDULO DE HISTORIA ACADÉMICA (con el ID del usuario actual) -->
-    <a href="app/views/historia/index.php?id=<?= $_SESSION['user_id'] ?>" class="menu-item">
-        <span>📚</span>
-        <h3>Historia</h3>
-        <p>Ver historial</p>
-    </a>
+            <!-- MÓDULO DE HISTORIA ACADÉMICA (con el ID del usuario actual) -->
+            <a href="app/views/historia/index.php?id=<?= $_SESSION['user_id'] ?>" class="menu-item">
+                <span>📚</span>
+                <h3>Historia</h3>
+                <p>Ver historial</p>
+            </a>
 
-    <!-- MÓDULO DE PERÍODOS (solo administradores) -->
-    <?php if ($_SESSION['rol'] === 'administrador'): ?>
-    <a href="app/views/periodos/index.php" class="menu-item">
-        <span>📅</span>
-        <h3>Períodos</h3>
-        <p>Gestión de lapsos</p>
-    </a>
-    <?php endif; ?>
-</div>
+            <!-- MÓDULO DE PERÍODOS (solo administradores) -->
+            <?php if ($_SESSION['rol'] === 'administrador'): ?>
+            <a href="app/views/periodos/index.php" class="menu-item">
+                <span>📅</span>
+                <h3>Períodos</h3>
+                <p>Gestión de lapsos</p>
+            </a>
+            <?php endif; ?>
+
+            <!-- MÓDULO DE AUDITORÍA (solo administradores) -->
+            <?php if ($_SESSION['rol'] === 'administrador'): ?>
+            <a href="app/views/auditoria/index.php" class="menu-item">
+                <span>📋</span>
+                <h3>Auditoría</h3>
+                <p>Registro de actividades</p>
+            </a>
+            <?php endif; ?>
+        </div>
+    </div>
+</body>
+</html>

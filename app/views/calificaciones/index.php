@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['registrar'])) {
             'usuario' => $_SESSION['user_id'],
             'inscripcion' => $inscripcion['id_inscripcion']
         ]);
-        $nuevo_id = $stmt_insert->fetchColumn(); // Obtener el ID retornado
+        $nuevo_id = $stmt_insert->fetchColumn();
         
         // Auditoría de inserción
         $datos_nuevos = [
@@ -172,6 +172,12 @@ if ($seccion_seleccionada) {
     ]);
     $calificaciones = $stmt_cal->fetchAll();
 }
+
+// =============================================
+// PERMISOS SEGÚN ROL
+// =============================================
+$puede_registrar = in_array($_SESSION['rol'], ['administrador', 'control_estudio', 'docente']);
+$puede_eliminar = in_array($_SESSION['rol'], ['administrador', 'control_estudio']);
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -179,38 +185,41 @@ if ($seccion_seleccionada) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIGAE - Calificaciones</title>
+    <!-- Font Awesome para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
-        /* (los estilos se mantienen exactamente igual que en tu archivo) */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
-            background: #f0f2f5;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 20px;
+            min-height: 100vh;
         }
         .navbar {
-            background: #1a3e60;
-            color: white;
+            background: rgba(255,255,255,0.95);
+            color: #1a3e60;
             padding: 15px 30px;
             margin: -20px -20px 20px -20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         .navbar h1 { font-size: 24px; }
         .navbar a {
-            color: white;
+            color: #1a3e60;
             text-decoration: none;
             margin-left: 20px;
-            padding: 5px 10px;
+            padding: 8px 16px;
             border-radius: 5px;
         }
-        .navbar a:hover { background: rgba(255,255,255,0.2); }
+        .navbar a:hover { background: #1a3e60; color: white; }
         .container { max-width: 1400px; margin: 0 auto; }
         .card {
             background: white;
             padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
             margin-bottom: 20px;
         }
         h2 {
@@ -276,15 +285,18 @@ if ($seccion_seleccionada) {
             background: #218838;
             transform: translateY(-2px);
         }
-        .btn-danger {
-            background: #dc3545;
+        .btn-icon {
+            text-decoration: none;
+            margin: 0 8px;
+            color: #1a3e60;
+            font-size: 20px;
+            transition: color 0.2s, transform 0.2s;
+            display: inline-block;
         }
-        .btn-danger:hover { background: #c82333; }
-        .btn-info {
-            background: #17a2b8;
-            color: white;
+        .btn-icon:hover {
+            color: #667eea;
+            transform: scale(1.1);
         }
-        .btn-info:hover { background: #138496; }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -327,13 +339,25 @@ if ($seccion_seleccionada) {
             grid-template-columns: 1fr 1fr auto;
             gap: 15px;
         }
+        .tooltip-personalizado {
+            position: absolute;
+            background: #333;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            opacity: 0.9;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
     <div class="navbar">
         <h1>📊 SIGAE - Gestión de Calificaciones</h1>
         <div>
-            <span>👤 <?= htmlspecialchars($_SESSION['username']) ?></span>
+            <span>👤 <?= htmlspecialchars($_SESSION['username']) ?> (<?= $_SESSION['rol'] ?>)</span>
             <a href="../../../dashboard.php">📊 Dashboard</a>
             <a href="../auth/logout.php">🚪 Cerrar Sesión</a>
         </div>
@@ -352,8 +376,9 @@ if ($seccion_seleccionada) {
         <?php endif; ?>
         
         <!-- ========================================= -->
-        <!-- REGISTRO DE CALIFICACIONES -->
+        <!-- REGISTRO DE CALIFICACIONES (Solo para admin, control y docente) -->
         <!-- ========================================= -->
+        <?php if ($puede_registrar): ?>
         <div class="card">
             <h2>➕ REGISTRAR NUEVA CALIFICACIÓN</h2>
             <form method="POST">
@@ -430,6 +455,7 @@ if ($seccion_seleccionada) {
                 </div>
             </form>
         </div>
+        <?php endif; ?>
         
         <!-- ========================================= -->
         <!-- FILTRO DE CALIFICACIONES POR SECCIÓN -->
@@ -453,7 +479,7 @@ if ($seccion_seleccionada) {
                 </select>
                 
                 <?php if ($seccion_seleccionada): ?>
-                    <a href="?exportar=<?= $seccion_seleccionada ?>&periodo=<?= $periodo_seleccionado ?>" class="btn-info" style="text-decoration: none; padding: 12px; text-align: center;">
+                    <a href="?exportar=<?= $seccion_seleccionada ?>&periodo=<?= $periodo_seleccionado ?>" class="btn-info" style="background: #17a2b8; color: white; text-decoration: none; padding: 12px; text-align: center; border-radius: 5px;">
                         📥 EXPORTAR
                     </a>
                 <?php endif; ?>
@@ -469,7 +495,7 @@ if ($seccion_seleccionada) {
                         <p style="font-size: 18px; color: #666;">📭 No hay calificaciones registradas para esta sección y período</p>
                     </div>
                 <?php else: ?>
-                    <div class="table-container" style="margin-top: 20px;">
+                    <div class="table-container" style="margin-top: 20px; overflow-x: auto;">
                         <table>
                             <thead>
                                 <tr>
@@ -494,10 +520,16 @@ if ($seccion_seleccionada) {
                                     <td><span class="nota"><?= number_format($c['valor_calificacion'], 2) ?></span></td>
                                     <td><?= date('d/m/Y', strtotime($c['fecha_registro'])) ?></td>
                                     <td>
-                                        <a href="?eliminar=<?= $c['id_calificacion'] ?>&ver_seccion=<?= $seccion_seleccionada ?>&periodo=<?= $periodo_seleccionado ?>" 
-                                           class="btn-danger" 
-                                           style="padding: 6px 12px; text-decoration: none; border-radius: 4px; color: white;"
-                                           onclick="return confirm('¿ELIMINAR ESTA CALIFICACIÓN?')">🗑️ ELIMINAR</a>
+                                        <?php if ($puede_eliminar): ?>
+                                            <a href="?eliminar=<?= $c['id_calificacion'] ?>&ver_seccion=<?= $seccion_seleccionada ?>&periodo=<?= $periodo_seleccionado ?>" 
+                                               class="btn-icon eliminar-icon" 
+                                               title="Modificar calificación"
+                                               onclick="return confirm('¿ELIMINAR ESTA CALIFICACIÓN?')">
+                                                <i class="fas fa-trash-alt"></i>
+                                            </a>
+                                        <?php else: ?>
+                                            <span style="color: #999;">—</span>
+                                        <?php endif; ?>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
@@ -547,7 +579,33 @@ if ($seccion_seleccionada) {
                     console.error('Error:', error);
                     selectEstudiante.innerHTML = '<option value="">-- ERROR AL CARGAR ESTUDIANTES --</option>';
                 });
-        } 
+        }
+
+        // =============================================
+        // TOOLTIPS PERSONALIZADOS CON JAVASCRIPT
+        // =============================================
+        document.addEventListener('DOMContentLoaded', function() {
+            const iconos = document.querySelectorAll('.btn-icon');
+            iconos.forEach(icono => {
+                icono.addEventListener('mouseenter', function(e) {
+                    // Crear tooltip
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'tooltip-personalizado';
+                    tooltip.textContent = this.getAttribute('title');
+                    document.body.appendChild(tooltip);
+                    
+                    // Posicionar tooltip
+                    const rect = this.getBoundingClientRect();
+                    tooltip.style.left = rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2) + 'px';
+                    tooltip.style.top = rect.top - tooltip.offsetHeight - 5 + 'px';
+                    
+                    // Remover tooltip al salir
+                    this.addEventListener('mouseleave', function() {
+                        tooltip.remove();
+                    }, { once: true });
+                });
+            });
+        });
     </script>
 </body>
 </html>

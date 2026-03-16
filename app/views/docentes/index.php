@@ -83,8 +83,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar'])) {
 // CRUD - ELIMINAR DOCENTE
 // =============================================
 if (isset($_GET['eliminar'])) {
+    $id = $_GET['eliminar'];
     $stmt = $db->prepare("DELETE FROM docentes WHERE id_docente = :id");
-    $stmt->execute(['id' => $_GET['eliminar']]);
+    $stmt->execute(['id' => $id]);
     header('Location: index.php?success=3');
     exit;
 }
@@ -117,23 +118,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['asignar'])) {
 // CRUD - ELIMINAR ASIGNACIÓN
 // =============================================
 if (isset($_GET['eliminar_asignacion'])) {
+    $id_asignacion = $_GET['eliminar_asignacion'];
     $stmt = $db->prepare("DELETE FROM asignaciones WHERE id_asignacion = :id");
-    $stmt->execute(['id' => $_GET['eliminar_asignacion']]);
-    header('Location: index.php?success=5');
+    $stmt->execute(['id' => $id_asignacion]);
+    header('Location: index.php?success=5&ver_asignaciones=' . ($_GET['ver_asignaciones'] ?? ''));
     exit;
 }
 
 // =============================================
 // OBTENER DATOS
 // =============================================
-$stmt_docentes = $db->query("SELECT * FROM docentes ORDER BY id_docente DESC");
-$docentes = $stmt_docentes->fetchAll();
+$docentes = $db->query("SELECT * FROM docentes ORDER BY id_docente DESC")->fetchAll();
 
-$stmt_materias = $db->query("SELECT * FROM materias WHERE estatus = 'activa' ORDER BY nombre_materia");
-$materias = $stmt_materias->fetchAll();
-
-$stmt_secciones = $db->query("SELECT * FROM secciones WHERE estatus = 'activa' ORDER BY nombre_seccion");
-$secciones = $stmt_secciones->fetchAll();
+$materias = $db->query("SELECT * FROM materias WHERE estatus = 'activa' ORDER BY nombre_materia")->fetchAll();
+$secciones = $db->query("SELECT * FROM secciones WHERE estatus = 'activa' ORDER BY nombre_seccion")->fetchAll();
 
 // Obtener docente para editar
 $editar_docente = null;
@@ -158,163 +156,117 @@ if (isset($_GET['ver_asignaciones'])) {
     $stmt->execute(['docente' => $id_docente]);
     $asignaciones_por_docente = $stmt->fetchAll();
 }
-?>
 
+// =============================================
+// PERMISOS SEGÚN ROL
+// =============================================
+$puede_gestionar = in_array($_SESSION['rol'], ['administrador', 'control_estudio']);
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIGAE - Gestión de Docentes</title>
+    <!-- Font Awesome para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
-        /* (los estilos se mantienen exactamente igual que en tu archivo original, no los modifico) */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
-            background: #f0f2f5;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 20px;
+            min-height: 100vh;
         }
         .navbar {
-            background: #1a3e60;
-            color: white;
+            background: rgba(255,255,255,0.95);
+            color: #1a3e60;
             padding: 15px 30px;
             margin: -20px -20px 20px -20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
-        .navbar h1 { font-size: 24px; }
+        .navbar h1 { font-size: 24px; display: flex; align-items: center; gap: 10px; }
         .navbar a {
-            color: white;
+            color: #1a3e60;
             text-decoration: none;
             margin-left: 20px;
-            padding: 5px 10px;
+            padding: 8px 16px;
             border-radius: 5px;
+            transition: all 0.2s;
+            font-weight: 500;
         }
-        .navbar a:hover { background: rgba(255,255,255,0.2); }
+        .navbar a:hover { background: #1a3e60; color: white; }
         .container { max-width: 1400px; margin: 0 auto; }
         .card {
             background: white;
             padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
         }
         h2 {
             color: #1a3e60;
             margin-bottom: 20px;
-            font-size: 22px;
             border-bottom: 3px solid #1a3e60;
             padding-bottom: 10px;
-        }
-        .alert {
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            font-weight: bold;
-        }
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
         }
         .form-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 15px;
         }
-        input, select, button, textarea {
+        input, select, button {
             padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
             font-size: 14px;
             width: 100%;
         }
-        input:focus, select:focus, textarea:focus {
-            border-color: #1a3e60;
+        input:focus, select:focus {
+            border-color: #667eea;
             outline: none;
-            box-shadow: 0 0 0 3px rgba(26,62,96,0.1);
         }
         button {
-            background: #28a745;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
             cursor: pointer;
             font-weight: bold;
-            transition: all 0.2s;
         }
-        button:hover {
-            background: #218838;
-            transform: translateY(-2px);
-        }
-        .btn-cancel {
-            background: #6c757d;
-        }
-        .btn-cancel:hover { background: #5a6268; }
-        .btn-edit {
-            background: #ffc107;
-            color: #333;
-            padding: 6px 14px;
+        button:hover { transform: translateY(-2px); }
+        
+        .btn-icon {
             text-decoration: none;
-            border-radius: 4px;
-            font-size: 12px;
-            margin-right: 5px;
-            display: inline-block;
-            font-weight: bold;
-        }
-        .btn-edit:hover { background: #e0a800; }
-        .btn-delete {
-            background: #dc3545;
-            color: white;
-            padding: 6px 14px;
-            text-decoration: none;
-            border-radius: 4px;
-            font-size: 12px;
-            display: inline-block;
-            font-weight: bold;
-        }
-        .btn-delete:hover { background: #c82333; }
-        .btn-assign {
-            background: #17a2b8;
-            color: white;
-            padding: 6px 14px;
-            text-decoration: none;
-            border-radius: 4px;
-            font-size: 12px;
-            display: inline-block;
-            font-weight: bold;
-        }
-        .btn-assign:hover { background: #138496; }
-        .btn-view {
-            background: #6c757d;
-            color: white;
-            padding: 6px 14px;
-            text-decoration: none;
-            border-radius: 4px;
-            font-size: 12px;
+            margin: 0 8px;
+            color: #1a3e60;
+            font-size: 20px;
+            transition: color 0.2s, transform 0.2s;
             display: inline-block;
         }
-        .btn-view:hover { background: #5a6268; }
+        .btn-icon:hover {
+            color: #667eea;
+            transform: scale(1.1);
+        }
+        
         table {
             width: 100%;
             border-collapse: collapse;
-            background: white;
-            border-radius: 8px;
-            overflow: hidden;
+            margin-top: 15px;
         }
         th {
             background: #1a3e60;
             color: white;
-            font-weight: 600;
-            padding: 15px 12px;
+            padding: 12px;
             text-align: left;
         }
         td {
-            padding: 12px;
+            padding: 10px;
             border-bottom: 1px solid #ddd;
-            vertical-align: middle;
         }
-        tr:hover { background: #f5f5f5; }
+        tr:hover { background: #f8f9fa; }
         .badge {
             background: #28a745;
             color: white;
@@ -324,29 +276,31 @@ if (isset($_GET['ver_asignaciones'])) {
             font-weight: bold;
             display: inline-block;
         }
-        .badge-inactive {
-            background: #dc3545;
+        .badge-inactive { background: #dc3545; }
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
         }
-        .stats {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 20px;
-            padding-top: 15px;
-            border-top: 2px solid #dee2e6;
-        }
-        .total {
-            background: #1a3e60;
+        .tooltip-personalizado {
+            position: absolute;
+            background: #333;
             color: white;
-            padding: 8px 20px;
-            border-radius: 25px;
-            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            opacity: 0.9;
+            white-space: nowrap;
         }
         .asignaciones-box {
             background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 10px;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
         }
     </style>
 </head>
@@ -354,7 +308,7 @@ if (isset($_GET['ver_asignaciones'])) {
     <div class="navbar">
         <h1>👨‍🏫 SIGAE - Gestión de Docentes</h1>
         <div>
-            <span>👤 <?= htmlspecialchars($_SESSION['username']) ?></span>
+            <span>👤 <?= htmlspecialchars($_SESSION['username']) ?> (<?= $_SESSION['rol'] ?>)</span>
             <a href="../../../dashboard.php">📊 Dashboard</a>
             <a href="../auth/logout.php">🚪 Cerrar Sesión</a>
         </div>
@@ -363,7 +317,7 @@ if (isset($_GET['ver_asignaciones'])) {
     <div class="container">
         
         <?php if (isset($_GET['success'])): ?>
-            <div class="alert alert-success">
+            <div class="alert-success">
                 <?php
                 $msgs = [
                     1 => '✅ Docente agregado correctamente',
@@ -389,26 +343,19 @@ if (isset($_GET['ver_asignaciones'])) {
                 
                 <div class="form-grid">
                     <input type="text" name="cedula" placeholder="📌 Cédula" 
-                           value="<?= $editar_docente['cedula'] ?? '' ?>" required>
-                    
+                           value="<?= htmlspecialchars($editar_docente['cedula'] ?? '') ?>" required>
                     <input type="text" name="nombres" placeholder="👤 Nombres" 
-                           value="<?= $editar_docente['nombres'] ?? '' ?>" required>
-                    
+                           value="<?= htmlspecialchars($editar_docente['nombres'] ?? '') ?>" required>
                     <input type="text" name="apellidos" placeholder="👤 Apellidos" 
-                           value="<?= $editar_docente['apellidos'] ?? '' ?>" required>
-                    
+                           value="<?= htmlspecialchars($editar_docente['apellidos'] ?? '') ?>" required>
                     <input type="text" name="especialidad" placeholder="📚 Especialidad" 
-                           value="<?= $editar_docente['especialidad'] ?? '' ?>" required>
-                    
+                           value="<?= htmlspecialchars($editar_docente['especialidad'] ?? '') ?>" required>
                     <input type="text" name="titulo" placeholder="🎓 Título Académico" 
-                           value="<?= $editar_docente['titulo_academico'] ?? '' ?>" required>
-                    
+                           value="<?= htmlspecialchars($editar_docente['titulo_academico'] ?? '') ?>" required>
                     <input type="text" name="telefono" placeholder="📞 Teléfono" 
-                           value="<?= $editar_docente['telefono'] ?? '' ?>">
-                    
+                           value="<?= htmlspecialchars($editar_docente['telefono'] ?? '') ?>">
                     <input type="email" name="email" placeholder="📧 Email" 
-                           value="<?= $editar_docente['email'] ?? '' ?>">
-                    
+                           value="<?= htmlspecialchars($editar_docente['email'] ?? '') ?>">
                     <?php if ($editar_docente): ?>
                         <select name="estatus">
                             <option value="activo" <?= $editar_docente['estatus'] == 'activo' ? 'selected' : '' ?>>Activo</option>
@@ -416,15 +363,12 @@ if (isset($_GET['ver_asignaciones'])) {
                         </select>
                     <?php endif; ?>
                 </div>
-                
-                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                <div style="margin-top: 15px;">
                     <?php if ($editar_docente): ?>
-                        <button type="submit" name="editar" style="width: auto; padding: 12px 30px;">✏️ ACTUALIZAR DOCENTE</button>
-                        <a href="index.php" style="text-decoration: none;">
-                            <button type="button" class="btn-cancel" style="width: auto; padding: 12px 30px;">❌ CANCELAR</button>
-                        </a>
+                        <button type="submit" name="editar">✏️ ACTUALIZAR DOCENTE</button>
+                        <a href="index.php"><button type="button" style="background: #6c757d;">❌ CANCELAR</button></a>
                     <?php else: ?>
-                        <button type="submit" name="agregar" style="width: auto; padding: 12px 30px;">➕ GUARDAR DOCENTE</button>
+                        <button type="submit" name="agregar">➕ GUARDAR DOCENTE</button>
                     <?php endif; ?>
                 </div>
             </form>
@@ -450,11 +394,7 @@ if (isset($_GET['ver_asignaciones'])) {
                 </thead>
                 <tbody>
                     <?php if (empty($docentes)): ?>
-                        <tr>
-                            <td colspan="8" style="text-align: center; padding: 30px;">
-                                🚫 No hay docentes registrados
-                            </td>
-                        </tr>
+                        <tr><td colspan="8" style="text-align: center; padding: 30px;">📭 No hay docentes registrados</td></tr>
                     <?php else: ?>
                         <?php foreach ($docentes as $d): ?>
                         <tr>
@@ -473,31 +413,41 @@ if (isset($_GET['ver_asignaciones'])) {
                                 </span>
                             </td>
                             <td>
-                                <a href="?editar=<?= $d['id_docente'] ?>" class="btn-edit">✏️ EDITAR</a>
-                                <a href="?ver_asignaciones=<?= $d['id_docente'] ?>" class="btn-assign">📌 ASIGNAR</a>
-                                <a href="?eliminar=<?= $d['id_docente'] ?>" 
-                                   class="btn-delete" 
-                                   onclick="return confirm('⚠️ ¿ELIMINAR DOCENTE?\n\n<?= $d['nombres'] ?> <?= $d['apellidos'] ?>\n\nEsta acción no se puede deshacer.')">🗑️ ELIMINAR</a>
+                                <?php if ($puede_gestionar): ?>
+                                    <!-- Editar -->
+                                    <a href="?editar=<?= $d['id_docente'] ?>" class="btn-icon" title="Editar docente">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <!-- Asignar materias -->
+                                    <a href="?ver_asignaciones=<?= $d['id_docente'] ?>" class="btn-icon" title="Asignar materias">
+                                        <i class="fas fa-tasks"></i>
+                                    </a>
+                                    <!-- Eliminar (con tooltip Modificar docente) -->
+                                    <a href="?eliminar=<?= $d['id_docente'] ?>" class="btn-icon" 
+                                       title="Modificar docente" 
+                                       onclick="return confirm('⚠️ ¿ELIMINAR DOCENTE?\n\n<?= htmlspecialchars($d['nombres'] . ' ' . $d['apellidos']) ?>\n\nEsta acción no se puede deshacer.')">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </a>
+                                <?php else: ?>
+                                    <span style="color: #999;">—</span>
+                                <?php endif; ?>
                             </td>
                         </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </tbody>
             </table>
-            <div class="stats">
-                <span style="font-size: 16px; color: #1a3e60;">📊 Total docentes activos:</span>
-                <span class="total"><?= count($docentes) ?></span>
-            </div>
         </div>
         
         <!-- ========================================= -->
         <!-- FORMULARIO DE ASIGNACIÓN DE MATERIAS/SECCIONES -->
         <!-- ========================================= -->
-        <?php if (isset($_GET['ver_asignaciones'])): 
+        <?php if (isset($_GET['ver_asignaciones']) && $puede_gestionar): 
             $id_docente = $_GET['ver_asignaciones'];
-            $stmt_doc = $db->prepare("SELECT * FROM docentes WHERE id_docente = :id");
-            $stmt_doc->execute(['id' => $id_docente]);
-            $docente = $stmt_doc->fetch();
+            $docente = $db->prepare("SELECT * FROM docentes WHERE id_docente = :id");
+            $docente->execute(['id' => $id_docente]);
+            $docente = $docente->fetch(PDO::FETCH_ASSOC);
+            if ($docente):
         ?>
         <div class="card">
             <h2>📌 ASIGNAR MATERIAS Y SECCIONES - <?= htmlspecialchars($docente['nombres'] . ' ' . $docente['apellidos']) ?></h2>
@@ -525,7 +475,7 @@ if (isset($_GET['ver_asignaciones'])) {
                     
                     <button type="submit" name="asignar" style="background: #17a2b8;">➕ ASIGNAR</button>
                     <a href="index.php" style="text-decoration: none;">
-                        <button type="button" class="btn-cancel">❌ CERRAR</button>
+                        <button type="button" style="background: #6c757d;">❌ CERRAR</button>
                     </a>
                 </div>
             </form>
@@ -549,8 +499,11 @@ if (isset($_GET['ver_asignaciones'])) {
                             <td><?= htmlspecialchars($a['periodo_academico']) ?></td>
                             <td>
                                 <a href="?eliminar_asignacion=<?= $a['id_asignacion'] ?>&ver_asignaciones=<?= $id_docente ?>" 
-                                   class="btn-delete"
-                                   onclick="return confirm('¿ELIMINAR ASIGNACIÓN?')">🗑️ QUITAR</a>
+                                   class="btn-icon" 
+                                   title="Eliminar asignación"
+                                   onclick="return confirm('¿QUITAR ASIGNACIÓN?')">
+                                    <i class="fas fa-times-circle"></i>
+                                </a>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -563,7 +516,32 @@ if (isset($_GET['ver_asignaciones'])) {
             <?php endif; ?>
         </div>
         <?php endif; ?>
-        
+        <?php endif; ?>
     </div>
+
+    <!-- ============================================= -->
+    <!-- TOOLTIPS PERSONALIZADOS CON JAVASCRIPT -->
+    <!-- ============================================= -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const iconos = document.querySelectorAll('.btn-icon');
+            iconos.forEach(icono => {
+                icono.addEventListener('mouseenter', function(e) {
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'tooltip-personalizado';
+                    tooltip.textContent = this.getAttribute('title');
+                    document.body.appendChild(tooltip);
+                    
+                    const rect = this.getBoundingClientRect();
+                    tooltip.style.left = rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2) + 'px';
+                    tooltip.style.top = rect.top - tooltip.offsetHeight - 5 + 'px';
+                    
+                    this.addEventListener('mouseleave', function() {
+                        tooltip.remove();
+                    }, { once: true });
+                });
+            });
+        });
+    </script>
 </body>
 </html>

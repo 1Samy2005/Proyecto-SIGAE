@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['agregar'])) {
             'estado' => $estado_nacimiento,
             'municipio' => $municipio_nacimiento
         ]);
-        $id_estudiante = $stmt->fetchColumn(); // Obtener el ID retornado
+        $id_estudiante = $stmt->fetchColumn();
         
         // Crear inscripción con consulta preparada
         $stmt_insc = $db->prepare(
@@ -68,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['agregar'])) {
 }
 
 // =============================================
-// EDITAR ESTUDIANTE (VERSIÓN CORREGIDA)
+// EDITAR ESTUDIANTE
 // =============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar'])) {
     $id = $_POST['id'];
@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar'])) {
     try {
         $db->beginTransaction();
         
-        // 1. Actualizar datos del estudiante
+        // Actualizar datos del estudiante
         $stmt_upd = $db->prepare(
             "UPDATE estudiantes SET 
              cedula = :cedula, nombres = :nombres, apellidos = :apellidos,
@@ -102,9 +102,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar'])) {
             'municipio' => $municipio_nacimiento, 'estatus' => $estatus, 'id' => $id
         ]);
         
-        // 2. Actualizar la inscripción
+        // Actualizar inscripción
         if (!empty($id_seccion)) {
-            // Verificar si ya tiene inscripción para el año actual
             $stmt_insc_check = $db->prepare(
                 "SELECT id_inscripcion FROM inscripciones 
                  WHERE id_estudiante = :estudiante AND anio_escolar = '2026-2027'"
@@ -113,7 +112,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar'])) {
             $inscripcion_actual = $stmt_insc_check->fetch(PDO::FETCH_ASSOC);
             
             if ($inscripcion_actual) {
-                // Actualizar inscripción existente
                 $stmt_upd_insc = $db->prepare(
                     "UPDATE inscripciones SET id_seccion = :seccion 
                      WHERE id_inscripcion = :id"
@@ -123,7 +121,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar'])) {
                     'id' => $inscripcion_actual['id_inscripcion']
                 ]);
             } else {
-                // Crear nueva inscripción
                 $stmt_new_insc = $db->prepare(
                     "INSERT INTO inscripciones (id_estudiante, id_seccion, anio_escolar, estatus_inscripcion) 
                      VALUES (:estudiante, :seccion, '2026-2027', 'activo')"
@@ -157,10 +154,12 @@ if (isset($_GET['eliminar'])) {
 }
 
 // =============================================
-// OBTENER DATOS (VERSIÓN CORREGIDA)
+// OBTENER DATOS (con edad calculada)
 // =============================================
 $stmt_est = $db->query("
-    SELECT e.*, s.nombre_seccion 
+    SELECT e.*, 
+           s.nombre_seccion,
+           EXTRACT(YEAR FROM AGE(e.fecha_nacimiento)) AS edad
     FROM estudiantes e
     LEFT JOIN inscripciones i ON e.id_estudiante = i.id_estudiante 
                               AND i.anio_escolar = '2026-2027'
@@ -176,7 +175,8 @@ $secciones = $stmt_sec->fetchAll();
 $editar_estudiante = null;
 if (isset($_GET['editar'])) {
     $stmt_edit = $db->prepare("
-        SELECT e.*, i.id_seccion 
+        SELECT e.*, i.id_seccion,
+               EXTRACT(YEAR FROM AGE(e.fecha_nacimiento)) AS edad
         FROM estudiantes e
         LEFT JOIN inscripciones i ON e.id_estudiante = i.id_estudiante 
                                   AND i.anio_escolar = '2026-2027'
@@ -185,6 +185,9 @@ if (isset($_GET['editar'])) {
     $stmt_edit->execute(['id' => $_GET['editar']]);
     $editar_estudiante = $stmt_edit->fetch(PDO::FETCH_ASSOC);
 }
+
+// Determinar si el usuario puede gestionar (admin o control_estudio)
+$puede_gestionar = in_array($_SESSION['rol'], ['administrador', 'control_estudio']);
 ?>
 
 <!DOCTYPE html>
@@ -193,6 +196,8 @@ if (isset($_GET['editar'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIGAE - Gestión de Estudiantes</title>
+    <!-- Font Awesome para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -291,28 +296,19 @@ if (isset($_GET['editar'])) {
         }
         tr:hover { background: #f5f5f5; }
         
-        .btn-edit {
-            background: #ffc107;
-            color: #333;
-            padding: 5px 10px;
+        .btn-icon {
             text-decoration: none;
-            border-radius: 3px;
-            margin-right: 5px;
+            margin: 0 8px;
+            color: #1a3e60;
+            font-size: 20px;
+            transition: color 0.2s, transform 0.2s;
+            display: inline-block;
         }
-        .btn-delete {
-            background: #dc3545;
-            color: white;
-            padding: 5px 10px;
-            text-decoration: none;
-            border-radius: 3px;
+        .btn-icon:hover {
+            color: #667eea;
+            transform: scale(1.1);
         }
-        .btn-history {
-            background: #17a2b8;
-            color: white;
-            padding: 5px 10px;
-            text-decoration: none;
-            border-radius: 3px;
-        }
+        
         .alert-success {
             background: #d4edda;
             color: #155724;
@@ -320,6 +316,18 @@ if (isset($_GET['editar'])) {
             border-radius: 8px;
             margin-bottom: 20px;
             border: 1px solid #c3e6cb;
+        }
+        .tooltip-personalizado {
+            position: absolute;
+            background: #333;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            opacity: 0.9;
+            white-space: nowrap;
         }
     </style>
 </head>
@@ -361,16 +369,23 @@ if (isset($_GET['editar'])) {
                     <h3>📋 DATOS PERSONALES</h3>
                     <div class="form-grid">
                         <input type="text" name="cedula" placeholder="Cédula" 
-                               value="<?= $editar_estudiante['cedula'] ?? '' ?>" required>
+                               value="<?= htmlspecialchars($editar_estudiante['cedula'] ?? '') ?>" required>
                         
                         <input type="text" name="nombres" placeholder="Nombres" 
-                               value="<?= $editar_estudiante['nombres'] ?? '' ?>" required>
+                               value="<?= htmlspecialchars($editar_estudiante['nombres'] ?? '') ?>" required>
                         
                         <input type="text" name="apellidos" placeholder="Apellidos" 
-                               value="<?= $editar_estudiante['apellidos'] ?? '' ?>" required>
+                               value="<?= htmlspecialchars($editar_estudiante['apellidos'] ?? '') ?>" required>
                         
                         <input type="date" name="fecha_nacimiento" placeholder="Fecha de nacimiento" 
-                               value="<?= $editar_estudiante['fecha_nacimiento'] ?? '' ?>" required>
+                               value="<?= htmlspecialchars($editar_estudiante['fecha_nacimiento'] ?? '') ?>" required>
+                        
+                        <?php if ($editar_estudiante): ?>
+                        <div>
+                            <label>📅 EDAD</label>
+                            <input type="text" value="<?= $editar_estudiante['edad'] ?? 'N/D' ?> años" readonly style="background: #e9ecef;">
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
                 
@@ -379,16 +394,16 @@ if (isset($_GET['editar'])) {
                     <h3>📍 LUGAR DE NACIMIENTO</h3>
                     <div class="form-grid">
                         <input type="text" name="lugar_nacimiento" placeholder="Ciudad / Localidad" 
-                               value="<?= $editar_estudiante['lugar_nacimiento'] ?? '' ?>" required>
+                               value="<?= htmlspecialchars($editar_estudiante['lugar_nacimiento'] ?? '') ?>" required>
                         
                         <input type="text" name="pais_nacimiento" placeholder="País" 
-                               value="<?= $editar_estudiante['pais_nacimiento'] ?? 'Venezuela' ?>" required>
+                               value="<?= htmlspecialchars($editar_estudiante['pais_nacimiento'] ?? 'Venezuela') ?>" required>
                         
                         <input type="text" name="estado_nacimiento" placeholder="Estado / Provincia" 
-                               value="<?= $editar_estudiante['estado_nacimiento'] ?? '' ?>" required>
+                               value="<?= htmlspecialchars($editar_estudiante['estado_nacimiento'] ?? '') ?>" required>
                         
                         <input type="text" name="municipio_nacimiento" placeholder="Municipio / Distrito" 
-                               value="<?= $editar_estudiante['municipio_nacimiento'] ?? '' ?>" required>
+                               value="<?= htmlspecialchars($editar_estudiante['municipio_nacimiento'] ?? '') ?>" required>
                     </div>
                 </div>
                 
@@ -401,7 +416,7 @@ if (isset($_GET['editar'])) {
                             <?php foreach ($secciones as $s): ?>
                                 <option value="<?= $s['id_seccion'] ?>" 
                                     <?= ($editar_estudiante && $editar_estudiante['id_seccion'] == $s['id_seccion']) ? 'selected' : '' ?>>
-                                    <?= $s['nombre_seccion'] ?>
+                                    <?= htmlspecialchars($s['nombre_seccion']) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -420,7 +435,7 @@ if (isset($_GET['editar'])) {
                 <div style="margin-top: 20px; display: flex; gap: 10px;">
                     <?php if ($editar_estudiante): ?>
                         <button type="submit" name="editar">✏️ ACTUALIZAR ESTUDIANTE</button>
-                        <a href="index.php"><button type="button">❌ CANCELAR</button></a>
+                        <a href="index.php"><button type="button" style="background: #6c757d;">❌ CANCELAR</button></a>
                     <?php else: ?>
                         <button type="submit" name="agregar">➕ GUARDAR ESTUDIANTE</button>
                     <?php endif; ?>
@@ -438,6 +453,7 @@ if (isset($_GET['editar'])) {
                         <th>Nombres</th>
                         <th>Apellidos</th>
                         <th>Fecha Nac.</th>
+                        <th>Edad</th> <!-- NUEVA COLUMNA -->
                         <th>Lugar Nacimiento</th>
                         <th>Sección</th>
                         <th>Estado</th>
@@ -450,10 +466,11 @@ if (isset($_GET['editar'])) {
                         <td><strong><?= htmlspecialchars($e['cedula']) ?></strong></td>
                         <td><?= htmlspecialchars($e['nombres']) ?></td>
                         <td><?= htmlspecialchars($e['apellidos']) ?></td>
-                        <td><?= $e['fecha_nacimiento'] ? date('d/m/Y', strtotime($e['fecha_nacimiento'])) : 'N/D' ?></td>
+                        <td><?= date('d/m/Y', strtotime($e['fecha_nacimiento'])) ?></td>
+                        <td><?= isset($e['edad']) ? $e['edad'] . ' años' : 'N/D' ?></td>
                         <td>
                             <?= htmlspecialchars($e['lugar_nacimiento'] ?? '') ?><br>
-                            <small><?= $e['pais_nacimiento'] ?? '' ?> / <?= $e['estado_nacimiento'] ?? '' ?></small>
+                            <small><?= htmlspecialchars($e['pais_nacimiento'] ?? '') ?> / <?= htmlspecialchars($e['estado_nacimiento'] ?? '') ?></small>
                         </td>
                         <td><?= htmlspecialchars($e['nombre_seccion'] ?? 'Sin asignar') ?></td>
                         <td>
@@ -462,10 +479,13 @@ if (isset($_GET['editar'])) {
                             </span>
                         </td>
                         <td>
-                            <a href="?editar=<?= $e['id_estudiante'] ?>" class="btn-edit">✏️ Editar</a>
-                            <a href="?eliminar=<?= $e['id_estudiante'] ?>" class="btn-delete" 
-                               onclick="return confirm('¿Eliminar estudiante?')">🗑️ Eliminar</a>
-                            <a href="../historia/index.php?id=<?= $e['id_estudiante'] ?>" class="btn-history">📚 Historia</a>
+                            <?php if ($puede_gestionar): ?>
+                                <a href="?editar=<?= $e['id_estudiante'] ?>" class="btn-icon" title="Editar estudiante"><i class="fas fa-edit"></i></a>
+                                <a href="?eliminar=<?= $e['id_estudiante'] ?>" class="btn-icon" title="Modificar estudiante" onclick="return confirm('¿ELIMINAR ESTUDIANTE?')"><i class="fas fa-trash-alt"></i></a>
+                                <a href="../historia/index.php?id=<?= $e['id_estudiante'] ?>" class="btn-icon" title="Ver historial"><i class="fas fa-history"></i></a>
+                            <?php else: ?>
+                                <span style="color: #999;">—</span>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -473,5 +493,28 @@ if (isset($_GET['editar'])) {
             </table>
         </div>
     </div>
+
+    <!-- Script para tooltips personalizados -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const iconos = document.querySelectorAll('.btn-icon');
+            iconos.forEach(icono => {
+                icono.addEventListener('mouseenter', function(e) {
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'tooltip-personalizado';
+                    tooltip.textContent = this.getAttribute('title');
+                    document.body.appendChild(tooltip);
+                    
+                    const rect = this.getBoundingClientRect();
+                    tooltip.style.left = rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2) + 'px';
+                    tooltip.style.top = rect.top - tooltip.offsetHeight - 5 + 'px';
+                    
+                    this.addEventListener('mouseleave', function() {
+                        tooltip.remove();
+                    }, { once: true });
+                });
+            });
+        });
+    </script>
 </body>
 </html>
